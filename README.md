@@ -101,11 +101,12 @@ A toolset of scanners (dependency advisories via OSV.dev today; SBOM generation,
 
 ### 3.5 GitOps baseline (Actions + Argo CD)
 
-For projects that deploy Kubernetes workloads, Esteira can additionally generate the standard baseline:
+For projects that deploy Kubernetes workloads, `gh esteira gitops` generates the standard baseline (base manifests + environment overlays + Argo CD Applications + a release workflow). Combined with `gh esteira pin`, this makes it hardening-compliant:
 
-- CI on GitHub Actions (build, test, scan), OCI images tagged by immutable commit SHA.
-- A separate GitOps repository as the source of truth; Argo CD reconciles cluster state; CI holds no Kubernetes credentials.
-- PostgreSQL (or equivalent) managed outside application pods.
+- CI on GitHub Actions (build, test, scan); OCI images tagged by immutable commit SHA; Argo CD reconciles cluster state; CI holds no Kubernetes credentials.
+- `staging` overlay auto-syncs (prune + self-heal); `production` requires a reviewed promotion PR (protected environment, required reviewers).
+- Release images carry SBOM + provenance attestations (`provenance: mode=max`).
+- Every third-party Action in generated workflows is SHA-pinned with an audit comment pointing at the original ref.
 
 ---
 
@@ -120,7 +121,7 @@ For projects that deploy Kubernetes workloads, Esteira can additionally generate
 ├── packages/db/prisma/schema.prisma
 ├── ci/project.yaml
 ├── ci/validate-project.mjs
-├── cli/                       # `gh esteira` extension: init, gate, audit
+├── cli/                       # `gh esteira` extension: init, analyze, gate, attest, audit, gitops, pin
 ├── gate/                      # pre-commit security gate + attestation
 ├── playground/                # isolated runner + gate matrix definitions
 ├── audit/                     # CVE cluster orchestration & reporting
@@ -169,7 +170,7 @@ Roll back application code by reverting the GitOps image digest/tag through a re
 2. **M2 — Pre-commit gate (done):** `gh esteira gate` runs on staged changes: secret detection (AWS/GitHub/npm/Google/Slack tokens, private keys, hardcoded credentials — with placeholder/`test` allowlists), dangerous-pattern checks (`eval`, string-based `exec`, curl-pipe-shell, `rm -rf /`, `chmod 777`, disabled TLS, SQL concatenation), oversized-blob guard, and a per-commit audit record under `.esteira/runs/<snapshot>.json` bound to a content-addressed SHA-256 snapshot (the security-SHA foundation). Policy comes from `.esteira/project.json` (`gate.mode: block|audit`, `blockAt`, `maxFileBytes`); a failed check fails closed. Exit 1 blocks the commit through `core.hooksPath`.
 3. **M3 — Playground (done):** isolated snapshot runner — the staged index becomes an anonymous `commit-tree` (objects only, no ref updates), extracted via `git archive` into temp dirs; the project's own suite runs twice (staged + HEAD baseline) and failure deltas are judged (`suite-failure`, `regression`, `pre-existing-failures`) plus a typecheck gate and hard timeouts. Host runner variables are sanitized (`NODE_TEST_CONTEXT` etc. — bugs that make suites report exit 0 on failure). Verdicts feed the gate report; every approved run records an attestation, and `gh esteira attest --verify` (wired into a `pre-push` hook) blocks any push whose HEAD is not content-identical to an approved snapshot — `--no-verify` commits cannot be pushed (admin escape hatch: `.esteira/push-disabled`).
 4. **M4 — CVE audit (done):** `gh esteira audit` harvests dependencies from npm (exact versions when the lockfile pins them), Python, Go and Rust manifests into a normalized SBOM (`.esteira/sbom.json` summary in reports); queries OSV.dev in one batch (no API key) with a conservative floor for ranges, fetches bounded advisory details, and reports each finding concisely: CVE/GHSA identifier, package@version, severity (GHSA labels → CVSS numeric → UNKNOWN), one-line summary and a concrete fix ("upgrade X to >= Y") pointing at the manifest. Policy from `.esteira/project.json` (`audit.failOn`, default `high`; `audit.maxDetails`); blockers set exit code 1 and the record persists at `.esteira/audits/latest.json`. Unreachable advisories degrade offline (exit 0 + note). The GitHub-repo side of the audit rides on CI running this command against the checkout.
-5. **M5 — GitOps baseline & hardening:** Argo CD template, SHA-pinned Actions, environments, SBOM/signing.
+5. **M5 — GitOps baseline & hardening (done):** `gh esteira gitops` generates `deploy/k8s/base` (Deployment with the release image resolved by GitOps, security context, probes, secrets via `DatabaseURL` placeholder for External Secrets, `service`), overlays for `staging` (auto-sync) and `production` (manual, more replicas, review-gated), Argo CD Applications pointing at the GitOps repo and a release workflow that builds the OCI image tagged by the immutable commit SHA with SBOM + `provenance: mode=max`; `gh esteira pin` SHA-pins every `uses:` in the generated workflows through `gh api` (audit comment `# pinned: <ref>` per line, idempotent reruns, unresolved refs fail the run with exit 1). CI keeps no cluster credentials — promotion is a reviewed GitOps PR, reconciled by Argo CD.
 
 ## 11. Before production
 
