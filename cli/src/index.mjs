@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAnalyze } from "./commands/analyze.mjs";
 import { runInit } from "./commands/init.mjs";
+import { runGate } from "./gate/run.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(
@@ -15,7 +16,7 @@ const HELP = `Esteira — secure adaptive CI/CD & vulnerability audit
 Usage:
   gh esteira init [--dry-run] [--force] [--dir <path>]
   gh esteira analyze [--json] [--dir <path>]
-  gh esteira gate [--staged]          # M2 (skeleton)
+  gh esteira gate [--json] [--dir <path>]  # static security gate over staged changes (M2)
   gh esteira audit [--json]           # M4 (skeleton)
   gh esteira --version | --help
 `;
@@ -61,11 +62,11 @@ function main() {
     case "init":
       runInit({ root: flags.dir, dryRun: flags.dryRun, force: flags.force });
       break;
-    case "gate":
-      process.stderr.write(
-        "[esteira] M2 skeleton: gate + playground + reinforced SHA not implemented; commit allowed in M1.\n",
-      );
+    case "gate": {
+      const run = runGate({ root: flags.dir, json: flags.json });
+      process.exitCode = run.exitCode;
       break;
+    }
     case "audit":
       process.stderr.write("[esteira] M4 skeleton: CVE audit cluster not implemented yet.\n");
       break;

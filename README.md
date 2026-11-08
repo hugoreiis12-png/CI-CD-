@@ -166,7 +166,7 @@ Roll back application code by reverting the GitOps image digest/tag through a re
 ## 10. Roadmap
 
 1. **M1 — CLI & analyzer (done):** `gh esteira init|analyze` (`cli/`), stack/arch detection (Node/pnpm/yarn/bun, Python/poetry/uv, Go, Rust, JVM, .NET, Ruby, PHP + containers/K8s/Helm/Terraform/CI providers), idempotent adapter generation (`.esteira/project.json`, workflow, pre-commit hook via `core.hooksPath`), `--dry-run` safety. Validated: 6/6 tests, hook gated a real commit, `gh extension install` working.
-2. **M2 — Pre-commit gate:** commit hook, diff classification, static/semantic validations, block-on-failure.
+2. **M2 — Pre-commit gate (done):** `gh esteira gate` runs on staged changes: secret detection (AWS/GitHub/npm/Google/Slack tokens, private keys, hardcoded credentials — with placeholder/`test` allowlists), dangerous-pattern checks (`eval`, string-based `exec`, curl-pipe-shell, `rm -rf /`, `chmod 777`, disabled TLS, SQL concatenation), oversized-blob guard, and a per-commit audit record under `.esteira/runs/<snapshot>.json` bound to a content-addressed SHA-256 snapshot (the security-SHA foundation). Policy comes from `.esteira/project.json` (`gate.mode: block|audit`, `blockAt`, `maxFileBytes`); a failed check fails closed. Exit 1 blocks the commit through `core.hooksPath`.
 3. **M3 — Playground:** isolated snapshot runner, first gate matrix (unit/contract/regression), verdict reports, integrity SHA attestation.
 4. **M4 — CVE audit:** SBOM + advisory scanners against local project and repo, consolidated remediation report.
 5. **M5 — GitOps baseline & hardening:** Argo CD template, SHA-pinned Actions, environments, SBOM/signing.
