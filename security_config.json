@@ -1,0 +1,30 @@
+{
+  "users": {
+    "admin": {
+      "name": "System Administrator",
+      "level": "ADMIN",
+      "authorized_targets": [
+        "*"
+      ],
+      "start_date": "2026-11-08T04:19:16.791226",
+      "end_date": null,
+      "notes": "",
+      "created_at": "2026-11-08T04:19:16.791372"
+    }
+  },
+  "targets": {
+    "internal_lab": {
+      "hostname": "lab.internal",
+      "scope": "10.0.0.0/8",
+      "authorized_users": [
+        "admin"
+      ],
+      "description": "Internal security lab environment",
+      "roi_details": "",
+      "registered_at": "2026-11-08T04:19:16.791532"
+    }
+  },
+  "permissions": {},
+  "sessions": {},
+  "last_updated": "2026-11-08T04:19:16.791805"
+}
