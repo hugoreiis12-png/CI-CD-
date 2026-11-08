@@ -6,6 +6,7 @@ import { runAnalyze } from "./commands/analyze.mjs";
 import { runInit } from "./commands/init.mjs";
 import { runGate } from "./gate/run.mjs";
 import { verifyAttestation } from "./gate/attest.mjs";
+import { runAudit } from "./audit/run.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(
@@ -19,7 +20,7 @@ Usage:
   gh esteira analyze [--json] [--dir <path>]
   gh esteira gate [--json] [--dir <path>]  # static + playground gate over staged changes (M2/M3)
   gh esteira attest --verify [--json] [--dir <path>]  # push: HEAD must be an attested snapshot (M3)
-  gh esteira audit [--json]           # M4 (skeleton)
+  gh esteira audit [--json] [--dir <path>]  # CVE/dependency advisories via OSV.dev (M4)
   gh esteira --version | --help
 `;
 
@@ -45,7 +46,7 @@ function parse(argv) {
   return { flags, positional };
 }
 
-function main() {
+async function main() {
   const { flags, positional } = parse(process.argv.slice(2));
   const command = positional[0];
 
@@ -75,13 +76,18 @@ function main() {
       process.exitCode = check.exitCode;
       break;
     }
-    case "audit":
-      process.stderr.write("[esteira] M4 skeleton: CVE audit cluster not implemented yet.\n");
+    case "audit": {
+      const result = await runAudit({ root: flags.dir, json: flags.json });
+      process.exitCode = result.exitCode;
       break;
+    }
     default:
       process.stderr.write(`[esteira] unknown command: ${command}\n\n${HELP}`);
       process.exitCode = 1;
   }
 }
 
-main();
+main().catch((error) => {
+  process.stderr.write(`[esteira] ${error.message}\n`);
+  process.exitCode = 1;
+});

@@ -93,11 +93,11 @@ Verdicts:
 
 ### 3.4 CVE audit cluster
 
-A toolset of cluster-deployed scanners (SBOM generation, dependency advisories, container/image scanning, IaC and secret checks) that:
+A toolset of scanners (dependency advisories via OSV.dev today; SBOM generation, container/image scanning, IaC and secret checks as the cluster adapters grow) that:
 
-- Scans the **local project** (source, dependency lockfiles, containers) and the **GitHub repository** (including CI artifacts).
-- Consolidates findings into a single concise report: CVE identifier, affected component/version, severity, exploit exposure, and a concrete remediation ("upgrade X to ≥ Y", patch, or config change).
-- Re-runs on demand and on pipeline events so new CVEs surface immediately after they are published.
+- Scans the **local project** (source, dependency lockfiles, containers) and the **GitHub repository** (via CI runs on the checkout).
+- Consolidates findings into a single concise report: advisory/CVE identifier, affected component/version, severity, exploit exposure, and a concrete remediation ("upgrade X to >= Y", patch, or config change).
+- Re-runs on demand (`gh esteira audit`), and on pipeline events so new CVEs surface immediately after they are published; `audit.failOn` turns critical findings into hard failures.
 
 ### 3.5 GitOps baseline (Actions + Argo CD)
 
@@ -168,7 +168,7 @@ Roll back application code by reverting the GitOps image digest/tag through a re
 1. **M1 — CLI & analyzer (done):** `gh esteira init|analyze` (`cli/`), stack/arch detection (Node/pnpm/yarn/bun, Python/poetry/uv, Go, Rust, JVM, .NET, Ruby, PHP + containers/K8s/Helm/Terraform/CI providers), idempotent adapter generation (`.esteira/project.json`, workflow, pre-commit hook via `core.hooksPath`), `--dry-run` safety. Validated: 6/6 tests, hook gated a real commit, `gh extension install` working.
 2. **M2 — Pre-commit gate (done):** `gh esteira gate` runs on staged changes: secret detection (AWS/GitHub/npm/Google/Slack tokens, private keys, hardcoded credentials — with placeholder/`test` allowlists), dangerous-pattern checks (`eval`, string-based `exec`, curl-pipe-shell, `rm -rf /`, `chmod 777`, disabled TLS, SQL concatenation), oversized-blob guard, and a per-commit audit record under `.esteira/runs/<snapshot>.json` bound to a content-addressed SHA-256 snapshot (the security-SHA foundation). Policy comes from `.esteira/project.json` (`gate.mode: block|audit`, `blockAt`, `maxFileBytes`); a failed check fails closed. Exit 1 blocks the commit through `core.hooksPath`.
 3. **M3 — Playground (done):** isolated snapshot runner — the staged index becomes an anonymous `commit-tree` (objects only, no ref updates), extracted via `git archive` into temp dirs; the project's own suite runs twice (staged + HEAD baseline) and failure deltas are judged (`suite-failure`, `regression`, `pre-existing-failures`) plus a typecheck gate and hard timeouts. Host runner variables are sanitized (`NODE_TEST_CONTEXT` etc. — bugs that make suites report exit 0 on failure). Verdicts feed the gate report; every approved run records an attestation, and `gh esteira attest --verify` (wired into a `pre-push` hook) blocks any push whose HEAD is not content-identical to an approved snapshot — `--no-verify` commits cannot be pushed (admin escape hatch: `.esteira/push-disabled`).
-4. **M4 — CVE audit:** SBOM + advisory scanners against local project and repo, consolidated remediation report.
+4. **M4 — CVE audit (done):** `gh esteira audit` harvests dependencies from npm (exact versions when the lockfile pins them), Python, Go and Rust manifests into a normalized SBOM (`.esteira/sbom.json` summary in reports); queries OSV.dev in one batch (no API key) with a conservative floor for ranges, fetches bounded advisory details, and reports each finding concisely: CVE/GHSA identifier, package@version, severity (GHSA labels → CVSS numeric → UNKNOWN), one-line summary and a concrete fix ("upgrade X to >= Y") pointing at the manifest. Policy from `.esteira/project.json` (`audit.failOn`, default `high`; `audit.maxDetails`); blockers set exit code 1 and the record persists at `.esteira/audits/latest.json`. Unreachable advisories degrade offline (exit 0 + note). The GitHub-repo side of the audit rides on CI running this command against the checkout.
 5. **M5 — GitOps baseline & hardening:** Argo CD template, SHA-pinned Actions, environments, SBOM/signing.
 
 ## 11. Before production
