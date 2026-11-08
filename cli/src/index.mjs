@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { runAnalyze } from "./commands/analyze.mjs";
 import { runInit } from "./commands/init.mjs";
 import { runGate } from "./gate/run.mjs";
+import { verifyAttestation } from "./gate/attest.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(
@@ -16,14 +17,15 @@ const HELP = `Esteira — secure adaptive CI/CD & vulnerability audit
 Usage:
   gh esteira init [--dry-run] [--force] [--dir <path>]
   gh esteira analyze [--json] [--dir <path>]
-  gh esteira gate [--json] [--dir <path>]  # static security gate over staged changes (M2)
+  gh esteira gate [--json] [--dir <path>]  # static + playground gate over staged changes (M2/M3)
+  gh esteira attest --verify [--json] [--dir <path>]  # push: HEAD must be an attested snapshot (M3)
   gh esteira audit [--json]           # M4 (skeleton)
   gh esteira --version | --help
 `;
 
 function parse(argv) {
   const flags = {
-    json: false, dryRun: false, force: false, staged: false,
+    json: false, dryRun: false, force: false, staged: false, verify: false,
     help: false, version: false, dir: process.cwd(),
   };
   const positional = [];
@@ -33,6 +35,7 @@ function parse(argv) {
     else if (a === "--dry-run") flags.dryRun = true;
     else if (a === "--force") flags.force = true;
     else if (a === "--staged") flags.staged = true;
+    else if (a === "--verify") flags.verify = true;
     else if (a === "--dir") flags.dir = path.resolve(argv[++i] ?? process.cwd());
     else if (a === "-h" || a === "--help") flags.help = true;
     else if (a === "-v" || a === "--version") flags.version = true;
@@ -65,6 +68,11 @@ function main() {
     case "gate": {
       const run = runGate({ root: flags.dir, json: flags.json });
       process.exitCode = run.exitCode;
+      break;
+    }
+    case "attest": {
+      const check = verifyAttestation({ root: flags.dir, json: flags.json });
+      process.exitCode = check.exitCode;
       break;
     }
     case "audit":

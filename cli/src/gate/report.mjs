@@ -9,6 +9,12 @@ export function render(run) {
   lines.push(`Changes     : ${run.stats.files} files, +${run.stats.insertions}/-${run.stats.deletions}`);
   lines.push(`Record      : ${run.path ?? "(not written)"}`);
 
+  if (run.playground?.ran) {
+    for (const lineItem of run.playground.lines) lines.push(`Playground  : ${lineItem}`);
+  } else if (run.playground?.ran === false) {
+    lines.push(`Playground  : NOT RUN (${run.playground.reason})`);
+  }
+
   if (run.findings.length) {
     for (const f of run.findings) {
       const where = f.line ? `${f.file}:${f.line}` : f.file;
@@ -20,10 +26,12 @@ export function render(run) {
 
   if (run.note) lines.push(`Note        : ${run.note}`);
 
-  if (run.verdict === "reproved") {
-    lines.push("Verdict     : commit BLOCKED — fix the findings above, re-stage and commit again.");
-  } else {
-    lines.push("Verdict     : commit may proceed.");
-  }
+  lines.push(
+    run.verdict === "reproved"
+      ? "Verdict     : commit BLOCKED — fix the findings above, re-stage and commit again."
+      : run.attested
+        ? `Verdict     : commit may proceed. Attestation ${run.tree.slice(0, 12)}… recorded (push-gated).`
+        : "Verdict     : commit may proceed.",
+  );
   return lines.join("\n");
 }

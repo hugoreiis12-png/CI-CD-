@@ -44,7 +44,8 @@ export function runInit({ root, dryRun = false, force = false, quiet = false }) 
     }
     process.stdout.write(
       "\nNext:\n" +
-      "  - gh esteira gate --staged   (M2: pre-commit security gate)\n" +
+      "  - gh esteira gate            (M2/M3: pre-commit security gate + playground matrix)\n" +
+      "  - gh esteira attest --verify (M3: push only attested snapshots)\n" +
       "  - gh esteira audit           (M4: CVE audit)\n"
     );
   }

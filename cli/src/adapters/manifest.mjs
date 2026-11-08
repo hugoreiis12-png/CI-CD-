@@ -11,7 +11,14 @@ export function writeManifest(root, profile) {
     generatedAt: new Date().toISOString(),
     profile,
     // User-owned policy: preserved across re-runs of `init`.
-    gate: previous?.gate ?? { mode: "block", minCoverage: 0, cveBreakSeverity: "high", gates: [] },
+    gate: previous?.gate ?? {
+      mode: "block",
+      blockAt: "medium",
+      maxFileBytes: 5_242_880,
+      playground: { enabled: true, baseline: true, timeoutMs: 120_000 },
+      push: { requireAttestation: true },
+      gates: [],
+    },
     audit: previous?.audit ?? { sources: ["local", "github"], schedule: "daily", failOn: "high" },
   };
 
