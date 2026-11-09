@@ -47,7 +47,7 @@ export function runGitops({ root, image: imageFlag, force = false, gitopsRepo, q
     }
     files.set(`deploy/argocd/application-${env}.yaml`, renderApplication({ app, gitopsRepo: repo, env }));
   }
-  files.set(WORKFLOW_FILE, renderReleaseWorkflow({ app }));
+  files.set(WORKFLOW_FILE, renderReleaseWorkflow({ app, gitopsRepo: repo }));
 
   const results = [];
   for (const [rel, content] of files) {

@@ -8,6 +8,7 @@ import { runGate } from "./gate/run.mjs";
 import { verifyAttestation } from "./gate/attest.mjs";
 import { runAudit } from "./audit/run.mjs";
 import { runGitops } from "./gitops/run.mjs";
+import { runPromote } from "./promote/run.mjs";
 import { pinWorkflows, makeGhResolver } from "./gitops/pin.mjs";
 import { exists, readFile, writeFile } from "./lib/fs-tools.mjs";
 
@@ -26,6 +27,7 @@ Usage:
   gh esteira audit [--json] [--dir <path>]  # CVE/dependency advisories via OSV.dev (M4)
   gh esteira gitops [--image <ref>] [--gitops-repo <o/r>] [--force]  # K8s base+overlays, Argo CD, release workflow (M5)
   gh esteira pin [--dry-run] [--dir <path>]  # SHA-pin every 'uses:' action in generated workflows (M5)
+  gh esteira promote --tag <sha> [--env staging|production] [--repo <o/r>] [--app <name>] [--dry-run]  # GitOps PR bumping the image tag (M6)
   gh esteira --version | --help
 `;
 
@@ -45,6 +47,10 @@ function parse(argv) {
     else if (a === "--dir") flags.dir = path.resolve(argv[++i] ?? process.cwd());
     else if (a === "--image") flags.image = argv[++i];
     else if (a === "--gitops-repo") flags.gitopsRepo = argv[++i];
+    else if (a === "--tag") flags.tag = argv[++i];
+    else if (a === "--env") flags.env = argv[++i];
+    else if (a === "--repo") flags.repo = argv[++i];
+    else if (a === "--app") flags.app = argv[++i];
     else if (a === "-h" || a === "--help") flags.help = true;
     else if (a === "-v" || a === "--version") flags.version = true;
     else if (!a.startsWith("-")) positional.push(a);
@@ -90,6 +96,14 @@ async function main() {
     }
     case "gitops": {
       runGitops({ root: flags.dir, image: flags.image, force: flags.force, gitopsRepo: flags.gitopsRepo });
+      break;
+    }
+    case "promote": {
+      const result = await runPromote({
+        root: flags.dir, repo: flags.repo, app: flags.app, tag: flags.tag,
+        env: flags.env, dryRun: flags.dryRun,
+      });
+      process.exitCode = result.exitCode;
       break;
     }
     case "pin": {
