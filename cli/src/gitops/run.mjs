@@ -6,12 +6,13 @@ import {
 import { renderApplication } from "./argocd.mjs";
 import { renderReleaseWorkflow } from "./release.mjs";
 
-const DEFAULT_IMAGE = (app) => `ghcr.io/${app}`; // override: --image ghcr.io/org/repo
+const DEFAULT_IMAGE = (/** @type {string} */ app) => `ghcr.io/${app}`; // override: --image ghcr.io/org/repo
 
 const WORKFLOW_FILE = ".github/workflows/esteira-release.yml";
 
-const sanitize = (value) => String(value).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+const sanitize = (/** @type {unknown} */ value) => String(value).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
 
+/** @param {string} root */
 function appName(root) {
   // package.json name is the most semantic identity; manifest root is next.
   const pkg = readJson(root, "package.json");
@@ -31,7 +32,8 @@ function appName(root) {
  * and the release workflow (image by commit-SHA + SBOM + provenance).
  * Idempotent like init: writes are either new or --force regenerated.
  */
-export function runGitops({ root, image: imageFlag, force = false, gitopsRepo, quiet = false } = {}) {
+/** @param {{ root: string, image?: string, force?: boolean, gitopsRepo?: string, quiet?: boolean }} input */
+export function runGitops({ root, image: imageFlag, force = false, gitopsRepo, quiet = false }) {
   const app = appName(root);
   const image = imageFlag ?? DEFAULT_IMAGE(app);
   const repo = gitopsRepo ?? "REPLACE-ME/esteira-gitops";
@@ -40,7 +42,7 @@ export function runGitops({ root, image: imageFlag, force = false, gitopsRepo, q
   files.set("deploy/k8s/base/deployment.yaml", renderDeployment({ app, image }));
   files.set("deploy/k8s/base/service.yaml", renderService({ app }));
   files.set("deploy/k8s/base/kustomization.yaml", renderKustomization({ app }));
-  for (const env of ["staging", "production"]) {
+  for (const env of /** @type {const} */ (["staging", "production"])) {
     const overlay = renderOverlay({ app, env });
     for (const [name, content] of Object.entries(overlay)) {
       files.set(`deploy/k8s/overlays/${env}/${name}`, content);
@@ -68,7 +70,7 @@ export function runGitops({ root, image: imageFlag, force = false, gitopsRepo, q
     }
     process.stdout.write(
       "\nNext:\n" +
-      "  - gh esteira pin            (SHA-pin the generated workflow actions — hardening)\n" +
+      "  - gh esteira pin            (REQUIRED before committing: the gate blocks floating actions in privileged workflows)\n" +
       "  - Replace REPLACE-ME/esteira-gitops (deploy/argocd/*.yaml) with your GitOps repo\n" +
       "  - Wire the promotion job: CI proposes the GitOps PR; Argo CD reconciles the cluster\n",
     );

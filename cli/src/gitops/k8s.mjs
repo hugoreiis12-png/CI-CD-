@@ -1,7 +1,8 @@
 /** Base manifests (deploy/k8s/base): image is set by GitOps, never by CI. */
-const labels = (app) =>
+const labels = (/** @type {string} */ app) =>
   `    app.kubernetes.io/name: ${app}\n    app.kubernetes.io/managed-by: esteira\n    app.kubernetes.io/part-of: ${app}`;
 
+/** @param {{ app: string, image: string, port?: number }} input */
 export function renderDeployment({ app, image, port = 8080 }) {
   return `apiVersion: apps/v1
 kind: Deployment
@@ -51,6 +52,7 @@ spec:
 `;
 }
 
+/** @param {{ app: string, port?: number }} input */
 export function renderService({ app, port = 8080 }) {
   return `apiVersion: v1
 kind: Service
@@ -65,6 +67,7 @@ spec:
 `;
 }
 
+/** @param {{ app: string }} input */
 export function renderKustomization({ app }) {
   return `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -80,6 +83,7 @@ commonLabels:
  * Overlay for an environment. Returns both files the overlay directory needs.
  * The image tag stays SET-BY-GITOPS: promotion is a reviewed GitOps PR.
  */
+/** @param {{ app: string, env: "staging" | "production" }} input @returns {Record<string, string>} */
 export function renderOverlay({ app, env }) {
   const production = env === "production";
   const replicas = production ? 3 : 1;

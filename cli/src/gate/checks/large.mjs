@@ -1,5 +1,9 @@
+/** @typedef {import("../../types.js").Check} Check */
+/** @typedef {import("../../types.js").Finding} Finding */
 /** Flags oversized staged blobs (default 5 MB) so binaries/artifacts stay out of Git. */
+/** @type {Check} */
 export function checkLargeFiles(ctx) {
+  /** @type {Finding[]} */
   const findings = [];
   const limit = ctx.config.maxFileBytes ?? 5_242_880;
   for (const file of ctx.files) {

@@ -1,7 +1,9 @@
+/** @typedef {import("../types.js").FileFingerprint} FileFingerprint */
+/** @typedef {import("../types.js").LanguageFinding} LanguageFinding */
 import { exists, readFile, readJson, listDir, isDir } from "../lib/fs-tools.mjs";
 
-const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const mentions = (text, word) =>
+const esc = (/** @type {string} */ s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const mentions = (/** @type {string | null} */ text, /** @type {string} */ word) =>
   text ? new RegExp(`(^|[^\\w-])${esc(word)}([^\\w-]|$)`, "i").test(text) : false;
 
 const NODE_FRAMEWORKS = {
@@ -15,6 +17,7 @@ const NODE_FRAMEWORKS = {
   expo: "expo", tailwindcss: "tailwindcss",
 };
 
+/** @param {string} root @returns {LanguageFinding | null} */
 export function detectNode(root) {
   if (!exists(root, "package.json")) return null;
   const pkg = readJson(root, "package.json") ?? {};
@@ -35,12 +38,13 @@ export function detectNode(root) {
   }
   evidence.push(`package-manager:${pm}`);
 
+  /** @type {string[]} */
   const frameworks = [];
   for (const [dep, name] of Object.entries(NODE_FRAMEWORKS)) {
     if (deps[dep] && !frameworks.includes(name)) frameworks.push(name);
   }
 
-  const scriptCmd = (name) => {
+  const scriptCmd = (/** @type {string} */ name) => {
     if (!scripts[name]) return null;
     return pm === "npm" ? `npm run ${name}` : `${pm} run ${name}`;
   };
@@ -77,6 +81,7 @@ const PY_FRAMEWORKS = [
   "pytest", "ruff", "mypy", "black", "uvicorn", "aiohttp", "tornado", "litestar",
 ];
 
+/** @param {string} root @returns {LanguageFinding | null} */
 export function detectPython(root) {
   const evidence = [];
   for (const f of ["pyproject.toml", "requirements.txt", "setup.py", "Pipfile"]) {
@@ -124,6 +129,7 @@ const GO_FRAMEWORKS = {
   chi: "go-chi/chi", grpc: "google.golang.org/grpc", kratos: "go-kratos",
 };
 
+/** @param {string} root @returns {LanguageFinding | null} */
 export function detectGo(root) {
   if (!exists(root, "go.mod")) return null;
   const mod = readFile(root, "go.mod") ?? "";
@@ -147,6 +153,7 @@ export function detectGo(root) {
 
 const RUST_FRAMEWORKS = ["axum", "actix-web", "rocket", "warp", "poem", "tokio", "sqlx", "diesel"];
 
+/** @param {string} root @returns {LanguageFinding | null} */
 export function detectRust(root) {
   if (!exists(root, "Cargo.toml")) return null;
   const cargo = readFile(root, "Cargo.toml") ?? "";
@@ -165,6 +172,7 @@ export function detectRust(root) {
   };
 }
 
+/** @param {string} root @param {FileFingerprint} fp @returns {LanguageFinding | null} */
 export function detectJvm(root, fp) {
   const gradle = exists(root, "build.gradle") || exists(root, "build.gradle.kts");
   const maven = exists(root, "pom.xml");
@@ -193,6 +201,7 @@ export function detectJvm(root, fp) {
   };
 }
 
+/** @param {string} root @param {FileFingerprint} fp @returns {LanguageFinding | null} */
 export function detectDotnet(root, fp) {
   const files = listDir(root).filter((e) => e.isFile()).map((e) => e.name);
   const csproj = files.find((f) => f.endsWith(".csproj"));
@@ -217,6 +226,7 @@ export function detectDotnet(root, fp) {
   };
 }
 
+/** @param {string} root @returns {LanguageFinding | null} */
 export function detectRuby(root) {
   if (!exists(root, "Gemfile")) return null;
   const blob = readFile(root, "Gemfile") ?? "";
@@ -236,6 +246,7 @@ export function detectRuby(root) {
   };
 }
 
+/** @param {string} root @returns {LanguageFinding | null} */
 export function detectPhp(root) {
   if (!exists(root, "composer.json")) return null;
   const composer = readJson(root, "composer.json") ?? {};

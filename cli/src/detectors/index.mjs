@@ -1,3 +1,4 @@
+/** @typedef {import("../types.js").Detector} Detector */
 import {
   detectNode, detectPython, detectGo, detectRust,
   detectJvm, detectDotnet, detectRuby, detectPhp,
@@ -5,6 +6,7 @@ import {
 import { detectInfra } from "./infra.mjs";
 
 // Add new detectors here. Signature: (root, fingerprint) => finding | null
+/** @type {Detector[]} */
 export const detectors = [
   detectNode, detectPython, detectGo, detectRust,
   detectJvm, detectDotnet, detectRuby, detectPhp, detectInfra,

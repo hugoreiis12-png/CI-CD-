@@ -3,4 +3,4 @@
 // "attestation.mjs" skip every check.
 const TEST_PATH = /(?:^|\/)(?:tests?|__tests__|specs?|fixtures?|__fixtures__|testdata)\/|\.(?:test|spec)\.[^/]+$|(?:^|\/)test_[^/]+\.py$|_test\.(?:go|py)$/i;
 
-export const isTestPath = (path) => TEST_PATH.test(path);
+export const isTestPath = (/** @type {string} */ path) => TEST_PATH.test(path);

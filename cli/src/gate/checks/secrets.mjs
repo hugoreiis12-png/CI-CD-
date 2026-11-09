@@ -1,3 +1,6 @@
+/** @typedef {import("../../types.js").Check} Check */
+/** @typedef {import("../../types.js").Finding} Finding */
+/** @typedef {import("../../types.js").Severity} Severity */
 import { isTestPath } from "./test-path.mjs";
 
 // Placeholder/dead values that should not be treated as leaked credentials.
@@ -6,6 +9,7 @@ import { isTestPath } from "./test-path.mjs";
 const PLACEHOLDER =
   /\b(x{4,}|changeme|placeholder|t[o0]d[o0])\b|your[_-][a-z_]*(?:key|token|secret|passw[o0]rd)|[_-](?:test|dummy|sample)[_-]|(_test_|-dummy)|\breplace[_-]me\b|<[^>]*>/i;
 
+/** @type {{ id: string, severity: Severity, re: RegExp, message: string }[]} */
 const RULES = [
   {
     id: "secret-aws", severity: "high", re: /AKIA[0-9A-Z]{16}/,
@@ -39,7 +43,9 @@ const RULES = [
   },
 ];
 
+/** @type {Check} */
 export function checkSecrets(ctx) {
+  /** @type {Finding[]} */
   const findings = [];
   for (const file of ctx.files) {
     for (let i = 0; i < file.added.length; i++) {

@@ -3,17 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const gitText = (root, args) =>
+export const gitText = (/** @type {string} */ root, /** @type {string[]} */ args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-
-/** Same, but returns the raw Buffer (for `git archive`). */
-export const gitBuffer = (root, args) =>
-  execFileSync("git", args, { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
 
 /**
  * Builds an anonymous commit containing exactly the index state, without any
  * ref update (objects only). This is what the playground gates run against.
  */
+/** @param {string} root @returns {string} anonymous commit SHA */
 export function stageCommit(root) {
   const tree = gitText(root, ["write-tree"]);
   let head = null;
@@ -30,6 +27,7 @@ export function stageCommit(root) {
 }
 
 /** HEAD as commit SHA, or null on an empty (unborn) repository. */
+/** @param {string} root @returns {string | null} */
 export function headCommit(root) {
   try {
     return gitText(root, ["rev-parse", "--verify", "HEAD"]);
@@ -38,15 +36,20 @@ export function headCommit(root) {
   }
 }
 
-/** Extracts a commit tree into destDir using `git archive` (read-only). */
+/**
+ * Extracts a commit tree into destDir. `git archive --output` writes the tar
+ * straight to disk (no stdout buffer cap) inside a private mkdtemp directory,
+ * so the tar path is neither size-limited nor predictable.
+ */
+/** @param {string} root @param {string} commit @param {string} destDir */
 export function extractCommit(root, commit, destDir) {
-  const buffer = gitBuffer(root, ["archive", commit]);
-  const tarPath = path.join(path.dirname(destDir), `${path.basename(destDir)}.tar`);
-  fs.writeFileSync(tarPath, buffer);
+  const tarDir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-archive-"));
+  const tarPath = path.join(tarDir, "snapshot.tar");
   try {
+    gitText(root, ["archive", "--format=tar", `--output=${tarPath}`, commit]);
     execFileSync("tar", ["-xf", tarPath], { cwd: destDir, stdio: "ignore" });
   } finally {
-    fs.rmSync(tarPath, { force: true });
+    fs.rmSync(tarDir, { recursive: true, force: true });
   }
   return destDir;
 }

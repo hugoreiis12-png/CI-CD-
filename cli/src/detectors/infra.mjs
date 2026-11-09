@@ -1,6 +1,10 @@
+/** @typedef {import("../types.js").FileFingerprint} FileFingerprint */
+/** @typedef {import("../types.js").InfraFinding} InfraFinding */
 import { exists, isDir } from "../lib/fs-tools.mjs";
 
+/** @param {string} root @param {FileFingerprint} fp @returns {InfraFinding | null} */
 export function detectInfra(root, fp) {
+  /** @type {string[]} */
   const evidence = [];
   const providers = [];
 

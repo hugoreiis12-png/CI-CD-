@@ -1,16 +1,23 @@
-import { readJson, writeFile } from "../lib/fs-tools.mjs";
+/** @typedef {import("../types.js").AuditFinding} AuditFinding */
+/** @typedef {import("../types.js").AuditRecord} AuditRecord */
+/** @typedef {import("../types.js").AuditSeverity} AuditSeverity */
+/** @typedef {import("../types.js").FetchImpl} FetchImpl */
+import { readJson, writeFile, errorLine } from "../lib/fs-tools.mjs";
 import { collectDependencies, sbomSummary } from "./manifests.mjs";
 import { collectCves } from "./osv.mjs";
 import { render } from "./report.mjs";
 
+/** @type {Record<AuditSeverity, number>} */
 export const SEVERITY_ORDER = { critical: 4, high: 3, medium: 2, low: 1, unknown: 0 };
 
 /** Audit policy from .esteira/project.json (written by `gh esteira init`). */
+/** @param {string} root @returns {{ failOn: AuditSeverity, maxDetails: number, sources: string[] }} */
 export function readAuditConfig(root) {
   const manifest = readJson(root, ".esteira/project.json");
   const audit = manifest?.audit ?? {};
   return {
-    failOn: audit.failOn ?? "high",      // severity at/above which audit blocks
+    // severity at/above which audit blocks; unknown values fall back to "high"
+    failOn: Object.hasOwn(SEVERITY_ORDER, audit.failOn) ? audit.failOn : "high",
     maxDetails: audit.maxDetails ?? 40,  // advisory detail fetch cap
     sources: audit.sources ?? ["local", "github"],
   };
@@ -22,11 +29,13 @@ export function readAuditConfig(root) {
  * on CI running this command against the checkout). Concise findings, each
  * with a concrete fix ("upgrade X to >= Y"), plus persisted record.
  */
-export async function runAudit({ root, json = false, fetchImpl } = {}) {
+/** @param {{ root: string, json?: boolean, fetchImpl?: FetchImpl }} input */
+export async function runAudit({ root, json = false, fetchImpl }) {
   const config = readAuditConfig(root);
   const sbom = collectDependencies(root);
   const summary = sbomSummary(sbom);
 
+  /** @type {AuditFinding[]} */
   let findings = [];
   let offlineNote = null;
   try {
@@ -34,17 +43,19 @@ export async function runAudit({ root, json = false, fetchImpl } = {}) {
       findings = await collectCves(sbom, { fetchImpl, maxDetails: config.maxDetails });
     }
   } catch (error) {
-    offlineNote = `Advisory source unreachable — audit ran offline: ${error.message.split("\n")[0]}`;
+    offlineNote = `Advisory source unreachable — audit ran offline: ${errorLine(error)}`;
   }
 
+  /** @type {Partial<Record<AuditSeverity, number>>} */
   const counts = {};
-  for (const severity of ["critical", "high", "medium", "low", "unknown"]) {
+  for (const severity of /** @type {AuditSeverity[]} */ (["critical", "high", "medium", "low", "unknown"])) {
     counts[severity] = findings.filter((f) => f.severity === severity).length;
   }
   const blockers = findings
     .filter((f) => (SEVERITY_ORDER[f.severity] ?? 0) >= (SEVERITY_ORDER[config.failOn] ?? 3));
   const verdict = blockers.length > 0 ? "reproved" : "clean";
 
+  /** @type {AuditRecord} */
   const record = {
     schemaVersion: 1,
     tool: "@esteira/cli",

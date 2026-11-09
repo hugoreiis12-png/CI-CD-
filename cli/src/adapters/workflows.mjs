@@ -1,10 +1,14 @@
+/** @typedef {import("../types.js").CommandKey} CommandKey */
+/** @typedef {import("../types.js").Profile} Profile */
 import { exists, writeFile, writeIfMissing } from "../lib/fs-tools.mjs";
 
-const step = (name, run) => `      - name: ${name}\n        run: ${run}`;
-const uses = (action, withBlock = "") =>
+const step = (/** @type {string} */ name, /** @type {string} */ run) => `      - name: ${name}\n        run: ${run}`;
+const uses = (/** @type {string} */ action, withBlock = "") =>
   withBlock ? `      - uses: ${action}\n        with:\n${withBlock}` : `      - uses: ${action}`;
 
+/** @param {Pick<Profile, "languages">} profile */
 function setupSteps(profile) {
+  /** @type {string[]} */
   const steps = [];
   for (const lang of profile.languages) {
     switch (lang.id) {
@@ -40,10 +44,12 @@ function setupSteps(profile) {
   return steps;
 }
 
+/** @param {Pick<Profile, "languages" | "commands">} profile */
 export function renderWorkflow(profile) {
   const steps = ["      - uses: actions/checkout@v4", ...setupSteps(profile)];
+  /** @type {Record<CommandKey, string>} */
   const labels = { lint: "Lint", typecheck: "Typecheck", test: "Test", build: "Build" };
-  for (const key of ["lint", "typecheck", "test", "build"]) {
+  for (const key of /** @type {CommandKey[]} */ (["lint", "typecheck", "test", "build"])) {
     const cmd = profile.commands[key];
     if (cmd) steps.push(step(labels[key], cmd));
   }
@@ -93,11 +99,13 @@ ${steps.join("\n")}
             echo "::error::No base commit to diff against (BASE_SHA='$BASE_SHA')"; exit 1
           fi
           git reset --soft "$BASE_SHA"
+      # Policy comes from the base commit, never from the PR being judged.
       - name: Esteira gate (server-side)
-        run: gh esteira gate
+        run: gh esteira gate --policy-ref "$BASE_SHA"
 `;
 }
 
+/** @param {string} root @param {Profile} profile */
 export function writeWorkflow(root, profile, { force = false } = {}) {
   const rel = ".github/workflows/esteira-ci.yml";
   if (force && exists(root, rel)) {

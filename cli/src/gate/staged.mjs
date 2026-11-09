@@ -1,9 +1,20 @@
+/** @typedef {import("../types.js").PatchFile} PatchFile */
+/** @typedef {import("../types.js").StagedFile} StagedFile */
 import { execFileSync } from "node:child_process";
 
-const BUFFER = 1024 * 1024 * 16;
+// Per-command output cap. Exceeding it throws, and runGate fails closed (item 1).
+const BUFFER = 1024 * 1024 * 64;
 
-const run = (root, args) =>
+const run = (/** @type {string} */ root, /** @type {string[]} */ args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: BUFFER });
+
+// Content diffs ignore repo-controlled .gitattributes (`-diff`, textconv,
+// external drivers) so a PR cannot hide added lines from the checks (item 3).
+const DIFF = ["diff", "--cached", "--no-renames", "--no-ext-diff"];
+const TEXT_DIFF = [...DIFF, "--text", "--no-textconv", "-U0"];
+
+// `:(literal)` stops git from reading the path as a glob or pathspec magic.
+const literal = (/** @type {string} */ path) => `:(literal)${path}`;
 
 /**
  * Parses `git diff -U0` output into { path, added[], addedLines[] } per file.
@@ -11,8 +22,11 @@ const run = (root, args) =>
  * line whose content starts with "++" is still content (S8). addedLines holds
  * the real line number in the new file, from the "@@ … +start" hunk header.
  */
+/** @param {string} text @returns {PatchFile[]} */
 export function parsePatch(text) {
+  /** @type {PatchFile[]} */
   const files = [];
+  /** @type {PatchFile | null} */
   let current = null;
   let inHunk = false;
   let next = 0;
@@ -34,45 +48,51 @@ export function parsePatch(text) {
   return files;
 }
 
-/** Collects staged changes: files, added lines, blob SHAs and blob sizes. */
+/**
+ * Parses `git diff --numstat -z`: "ins\tdel\tpath\0" records. Paths are
+ * verbatim (no C-quoting), so non-ASCII names and names containing " b/" or
+ * tabs keep their real value (item 4).
+ */
+/** @param {string} text @returns {{ ins: string, del: string, path: string }[]} */
+export function parseNumstatZ(text) {
+  const entries = [];
+  for (const record of text.split("\0")) {
+    if (!record) continue;
+    const first = record.indexOf("\t");
+    const second = record.indexOf("\t", first + 1);
+    if (first < 0 || second < 0) throw new Error(`unexpected numstat record: ${JSON.stringify(record)}`);
+    entries.push({ ins: record.slice(0, first), del: record.slice(first + 1, second), path: record.slice(second + 1) });
+  }
+  return entries;
+}
+
+/**
+ * Collects staged changes: files, added lines, blob SHAs and blob sizes.
+ * Every git failure propagates; runGate turns it into a blocking verdict.
+ */
+/** @param {string} root @returns {StagedFile[]} */
 export function getStaged(root) {
-  const numstat = run(root, ["diff", "--cached", "--no-renames", "--numstat"]);
-  const patch = run(root, ["diff", "--cached", "--no-renames", "-U0"]);
-  const byPath = new Map(parsePatch(patch).map((f) => [f.path, f]));
-
+  /** @type {StagedFile[]} */
   const files = [];
-  for (const line of numstat.split("\n")) {
-    if (!line.trim()) continue;
-    const [ins, del, ...rest] = line.split("\t");
-    const path = rest.join("\t");
-    const safePath = path.replace(/^"(.*)"$/, "$1");
+  for (const { ins, del, path } of parseNumstatZ(run(root, [...DIFF, "--numstat", "-z"]))) {
+    // Diff each file by its exact path instead of re-parsing paths out of one
+    // big patch header (items 3 and 4).
+    const [parsed] = parsePatch(run(root, [...TEXT_DIFF, "--", literal(path)]));
 
-    let blob = null;
-    let size = null;
-    try {
-      const entry = run(root, ["ls-files", "-s", "--", safePath]).trim().split("\t")[0];
-      blob = entry.split(/\s+/)[1] ?? null;
-      if (blob) {
-        size = Number.parseInt(
-          run(root, ["cat-file", "-s", blob]).trim(),
-          10,
-        );
-      }
-    } catch {
-      // Unresolvable blob (e.g. rename edge cases) — keep going without it.
-    }
+    const entry = run(root, ["ls-files", "-s", "-z", "--", literal(path)]).split("\0")[0];
+    const blob = entry ? entry.split(/\s+/)[1] ?? null : null; // null for deletions
+    const size = blob ? Number.parseInt(run(root, ["cat-file", "-s", blob]).trim(), 10) : null;
 
     files.push({
-      path: safePath,
+      path,
       insertions: ins === "-" ? null : Number.parseInt(ins, 10) || 0,
       deletions: del === "-" ? null : Number.parseInt(del, 10) || 0,
-      added: byPath.get(path)?.added ?? [],
-      addedLines: byPath.get(path)?.addedLines ?? [],
+      added: parsed?.added ?? [],
+      addedLines: parsed?.addedLines ?? [],
       blob,
       size,
       binary: ins === "-" || del === "-",
     });
   }
-
   return files;
 }

@@ -1,4 +1,14 @@
-import { readJson } from "../lib/fs-tools.mjs";
+/** @typedef {import("../types.js").Finding} Finding */
+/** @typedef {import("../types.js").StagedFile} StagedFile */
+/** @typedef {import("../types.js").GateConfig} GateConfig */
+/** @typedef {import("../types.js").GateMode} GateMode */
+/** @typedef {import("../types.js").Manifest} Manifest */
+/** @typedef {import("../types.js").PlaygroundOutcome} PlaygroundOutcome */
+/** @typedef {import("../types.js").RunRecord} RunRecord */
+/** @typedef {import("../types.js").Severity} Severity */
+/** @typedef {import("../types.js").Verdict} Verdict */
+import { execFileSync } from "node:child_process";
+import { readJson, errorLine } from "../lib/fs-tools.mjs";
 import { getStaged } from "./staged.mjs";
 import { checks } from "./checks/index.mjs";
 import { snapshot, writeRun, indexBlobs } from "./attest.mjs";
@@ -6,15 +16,64 @@ import { render } from "./report.mjs";
 import { runPlayground } from "../playground/run.mjs";
 import { buildProfile } from "../lib/profile.mjs";
 
+/** @type {Record<Severity, number>} */
 export const SEVERITY_RANK = { low: 1, medium: 2, high: 3 };
+/** @param {unknown} value @returns {value is Severity} */
+const isSeverity = (value) => typeof value === "string" && Object.hasOwn(SEVERITY_RANK, value);
+/** @param {unknown} value @returns {value is GateMode} */
+const isMode = (value) => value === "block" || value === "audit";
 
-/** Gate policy from .esteira/project.json (written by `gh esteira init`); safe defaults. */
-export function readGateConfig(root) {
-  const manifest = readJson(root, ".esteira/project.json");
+const MANIFEST = ".esteira/project.json";
+
+/**
+ * The project manifest. With `policyRef` (CI) it is read from that trusted
+ * commit, never from the change set under review (item 2): a PR cannot relax
+ * the policy of the gate that judges it. A bad ref throws (fail closed); a ref
+ * without a manifest means defaults.
+ */
+/**
+ * @param {string} root
+ * @param {string | null} [policyRef]
+ * @returns {Manifest | null}
+ */
+export function loadManifest(root, policyRef = null) {
+  if (!policyRef) return readJson(root, MANIFEST);
+  const git = (/** @type {string[]} */ args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  git(["cat-file", "-e", `${policyRef}^{commit}`]);
+  let text;
+  try {
+    text = git(["show", `${policyRef}:${MANIFEST}`]);
+  } catch {
+    return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${MANIFEST} at ${policyRef} is not valid JSON: ${errorLine(error)}`);
+  }
+}
+
+/**
+ * Gate policy with safe defaults. Unknown `mode`/`blockAt` values are reported
+ * as errors instead of silently disabling blocking (`x >= undefined` is false).
+ */
+/**
+ * @param {Manifest | null} manifest
+ * @returns {{ config: GateConfig, errors: string[] }}
+ */
+export function readGateConfig(manifest) {
   const gate = manifest?.gate ?? {};
-  return {
-    mode: gate.mode ?? "block",           // "block" | "audit"
-    blockAt: gate.blockAt ?? "medium",    // findings at/above this severity block
+  /** @type {string[]} */
+  const errors = [];
+  if (gate.mode !== undefined && !isMode(gate.mode)) {
+    errors.push(`gate.mode must be one of block|audit (got ${JSON.stringify(gate.mode)})`);
+  }
+  if (gate.blockAt !== undefined && !isSeverity(gate.blockAt)) {
+    errors.push(`gate.blockAt must be one of ${Object.keys(SEVERITY_RANK).join("|")} (got ${JSON.stringify(gate.blockAt)})`);
+  }
+  const config = {
+    mode: isMode(gate.mode) ? gate.mode : "block",
+    blockAt: isSeverity(gate.blockAt) ? gate.blockAt : "medium",
     maxFileBytes: gate.maxFileBytes ?? 5_242_880,
     playground: {
       enabled: gate.playground?.enabled !== false,
@@ -22,6 +81,7 @@ export function readGateConfig(root) {
       timeoutMs: gate.playground?.timeoutMs ?? 120_000,
     },
   };
+  return { config, errors };
 }
 
 /**
@@ -32,14 +92,23 @@ export function readGateConfig(root) {
  * A failed check fails closed: internal errors become high findings.
  * On approval the run record becomes a push attestation (see `attest --verify`).
  */
-export function runGate({ root, json = false }) {
+/**
+ * @param {{ root: string, json?: boolean, policyRef?: string | null }} options
+ * @returns {RunRecord & { exitCode: number }}
+ */
+export function runGate({ root, json = false, policyRef = null }) {
+  /** @type {StagedFile[]} */
   let files = [];
   try {
     files = getStaged(root);
   } catch (error) {
+    // Fail closed (item 1): an unreadable change set is never "approved".
     return finish({
-      root, json, verdict: "approved", exitCode: 0, findings: [], files: [],
-      note: `Nothing gated (not a git repository or git unavailable): ${error.message.split("\n")[0]}`,
+      root, json, verdict: "reproved", exitCode: 1, files: [],
+      findings: [{
+        check: "gate", severity: "high", rule: "gate-read-error", file: "*", line: null,
+        message: `Could not read the staged change set — nothing was validated: ${errorLine(error)}`,
+      }],
     });
   }
 
@@ -50,8 +119,23 @@ export function runGate({ root, json = false }) {
     });
   }
 
-  const config = readGateConfig(root);
-  const findings = [];
+  let manifest;
+  try {
+    manifest = loadManifest(root, policyRef);
+  } catch (error) {
+    return finish({
+      root, json, verdict: "reproved", exitCode: 1, files,
+      findings: [{
+        check: "gate", severity: "high", rule: "gate-policy-error", file: MANIFEST, line: null,
+        message: `Could not load the gate policy${policyRef ? ` from ${policyRef}` : ""}: ${errorLine(error)}`,
+      }],
+    });
+  }
+  const { config, errors } = readGateConfig(manifest);
+  /** @type {Finding[]} */
+  const findings = errors.map((message) => ({
+    check: "gate", severity: /** @type {const} */ ("high"), rule: "gate-policy-invalid", file: MANIFEST, line: null, message,
+  }));
   for (const check of checks) {
     try {
       findings.push(...check({ root, files, config }));
@@ -59,20 +143,21 @@ export function runGate({ root, json = false }) {
       findings.push({
         check: check.name ?? "unknown", severity: "high", rule: "check-error",
         file: "*", line: null,
-        message: `Gate check failed — treat as vulnerable until fixed: ${error.message.split("\n")[0]}`,
+        message: `Gate check failed — treat as vulnerable until fixed: ${errorLine(error)}`,
       });
     }
   }
 
+  /** @type {PlaygroundOutcome | null} */
   let playground = null;
   if (config.playground.enabled) {
     try {
-      const commands = commandsFor(root);
+      const commands = manifest?.profile?.commands ?? buildProfile(root).commands;
       const result = runPlayground({ root, settings: config.playground, commands });
       playground = { ran: result.ran, lines: result.lines, results: result.results };
       findings.push(...result.findings);
     } catch (error) {
-      playground = { ran: false, reason: error.message.split("\n")[0] };
+      playground = { ran: false, reason: errorLine(error) };
       findings.push({
         check: "playground", severity: "medium", rule: "playground-error",
         file: "*", line: null,
@@ -96,14 +181,20 @@ export function runGate({ root, json = false }) {
   });
 }
 
-/** Test/typecheck commands from the manifest profile (fallback: fresh analyze). */
-function commandsFor(root) {
-  const manifest = readJson(root, ".esteira/project.json");
-  const fromManifest = manifest?.profile?.commands;
-  if (fromManifest) return fromManifest;
-  return buildProfile(root).commands;
-}
+/**
+ * @typedef {object} GateResult
+ * @property {string} root
+ * @property {boolean} json
+ * @property {Verdict} verdict
+ * @property {0 | 1} exitCode
+ * @property {Finding[]} findings
+ * @property {StagedFile[]} files
+ * @property {GateConfig} [config]
+ * @property {PlaygroundOutcome | null} [playground]
+ * @property {string | null} [note]
+ */
 
+/** @param {GateResult} result @returns {RunRecord & { exitCode: number }} */
 function finish(result) {
   const snap = snapshot(result.files);
   let tree = null;
@@ -113,6 +204,7 @@ function finish(result) {
     tree = null;
   }
 
+  /** @type {RunRecord} */
   const run = {
     schemaVersion: 1,
     id: snap.short,

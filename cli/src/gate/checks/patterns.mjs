@@ -1,17 +1,22 @@
+/** @typedef {import("../../types.js").Check} Check */
+/** @typedef {import("../../types.js").Finding} Finding */
+/** @typedef {import("../../types.js").Severity} Severity */
 const JS = ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "vue", "svelte"];
 const SHELL = ["sh", "bash", "zsh"];
 const DOCKER = ["Dockerfile"];
 const YAML = ["yaml", "yml"];
 
+/** @param {string} path @param {string[]} exts */
 const hasExt = (path, exts) => {
-  const name = path.split("/").pop().toLowerCase();
+  const name = (path.split("/").pop() ?? "").toLowerCase();
   if (exts.includes("Dockerfile") && (name === "dockerfile" || name.startsWith("dockerfile."))) return true;
-  const ext = name.includes(".") ? name.split(".").pop() : "__no_ext__";
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : "__no_ext__";
   return exts.includes(ext);
 };
 
 import { isTestPath } from "./test-path.mjs";
 
+/** @type {{ id: string, severity: Severity, exts: string[], re: RegExp, message: string }[]} */
 const RULES = [
   {
     id: "dangerous-eval", severity: "medium", exts: JS,
@@ -50,7 +55,9 @@ const RULES = [
   },
 ];
 
+/** @type {Check} */
 export function checkDangerousPatterns(ctx) {
+  /** @type {Finding[]} */
   const findings = [];
   for (const file of ctx.files) {
     for (let i = 0; i < file.added.length; i++) {

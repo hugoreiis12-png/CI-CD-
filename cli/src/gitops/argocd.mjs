@@ -4,6 +4,7 @@ const APP_BASE = { project: "default", server: "https://kubernetes.default.svc" 
  * Argo CD Applications. CI never holds cluster credentials: the GitOps repo
  * is the source of truth, CI only proposes the promotion PR.
  */
+/** @param {{ app: string, gitopsRepo: string, env: "staging" | "production" }} input */
 export function renderApplication({ app, gitopsRepo, env }) {
   const production = env === "production";
   const syncPolicy = production

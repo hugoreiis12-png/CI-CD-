@@ -1,0 +1,5 @@
+node_modules/
+.esteira/runs/
+.esteira/tmp/
+.esteira/hooks/
+.esteira/audits/

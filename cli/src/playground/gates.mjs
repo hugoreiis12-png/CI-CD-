@@ -1,5 +1,9 @@
+/** @typedef {import("../types.js").CommandResult} CommandResult */
+/** @typedef {import("../types.js").Finding} Finding */
+/** @typedef {import("../types.js").Severity} Severity */
 import { countFailures } from "./runner.mjs";
 
+/** @param {string} rule @param {Severity} severity @param {string} message @returns {Finding} */
 const finding = (rule, severity, message) => ({
   check: "playground", rule, severity, file: "*", line: null, message,
 });
@@ -10,6 +14,10 @@ const finding = (rule, severity, message) => ({
  *   - staged suite fails, baseline clean            → high (suite-failure)
  *   - failure count worse than a failing baseline   → high (regression)
  *   - failure count equal/better than baseline      → low (pre-existing, not blocking)
+ */
+/**
+ * @param {{ staged: CommandResult, baseline: CommandResult | null, settings: { timeoutMs: number } }} input
+ * @returns {{ ok: boolean, finding: Finding | null, lines: string[] }}
  */
 export function evaluateSuite({ staged, baseline, settings }) {
   if (staged.code === "timeout") {
@@ -41,7 +49,7 @@ export function evaluateSuite({ staged, baseline, settings }) {
   }
 
   const baselineClean = baseline ? baseline.code === 0 : true;
-  const before = baselineClean ? 0 : countFailures(baseline.stdout);
+  const before = baselineClean ? 0 : countFailures(baseline?.stdout);
   const after = countFailures(staged.stdout);
 
   if (baselineClean) {
@@ -75,6 +83,10 @@ export function evaluateSuite({ staged, baseline, settings }) {
 }
 
 /** Type-semantics gate against the staged snapshot (no baseline needed). */
+/**
+ * @param {{ staged: CommandResult, settings: { timeoutMs: number } }} input
+ * @returns {{ ok: boolean, finding: Finding | null, lines: string[] }}
+ */
 export function evaluateTypecheck({ staged, settings }) {
   if (staged.code === "timeout") {
     return {

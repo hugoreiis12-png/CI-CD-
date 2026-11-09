@@ -9,8 +9,9 @@ import { verifyAttestation } from "./gate/attest.mjs";
 import { runAudit } from "./audit/run.mjs";
 import { runGitops } from "./gitops/run.mjs";
 import { runPromote } from "./promote/run.mjs";
+import { runReport } from "./report/cloudflare.mjs";
 import { pinWorkflows, makeGhResolver } from "./gitops/pin.mjs";
-import { exists, readFile, writeFile } from "./lib/fs-tools.mjs";
+import { exists, readFile, writeFile, errorLine } from "./lib/fs-tools.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(
@@ -22,16 +23,39 @@ const HELP = `Esteira — secure adaptive CI/CD & vulnerability audit
 Usage:
   gh esteira init [--dry-run] [--force] [--dir <path>]
   gh esteira analyze [--json] [--dir <path>]
-  gh esteira gate [--json] [--dir <path>]  # static + playground gate over staged changes (M2/M3)
+  gh esteira gate [--json] [--dir <path>] [--policy-ref <commit>]  # static + playground gate over staged changes; CI reads policy from <commit>
   gh esteira attest --verify [--json] [--dir <path>]  # push: HEAD must be an attested snapshot (M3)
   gh esteira audit [--json] [--dir <path>]  # CVE/dependency advisories via OSV.dev (M4)
   gh esteira gitops [--image <ref>] [--gitops-repo <o/r>] [--force]  # K8s base+overlays, Argo CD, release workflow (M5)
   gh esteira pin [--dry-run] [--dir <path>]  # SHA-pin every 'uses:' action in generated workflows (M5)
   gh esteira promote --tag <sha> [--env staging|production] [--repo <o/r>] [--app <name>] [--dry-run]  # GitOps PR bumping the image tag (M6)
+  gh esteira report [--out <path>] [--json]  # latest gate + audit as Cloudflare security-audit findings.json (validated)
   gh esteira --version | --help
 `;
 
+/**
+ * @typedef {object} Flags
+ * @property {boolean} json
+ * @property {boolean} dryRun
+ * @property {boolean} force
+ * @property {boolean} staged
+ * @property {boolean} verify
+ * @property {boolean} help
+ * @property {boolean} version
+ * @property {string} dir
+ * @property {string} [image]
+ * @property {string} [gitopsRepo]
+ * @property {string} [policyRef]
+ * @property {string} [tag]
+ * @property {string} [env]
+ * @property {string} [repo]
+ * @property {string} [app]
+ * @property {string} [out]
+ */
+
+/** @param {string[]} argv @returns {{ flags: Flags, positional: string[] }} */
 function parse(argv) {
+  /** @type {Flags} */
   const flags = {
     json: false, dryRun: false, force: false, staged: false, verify: false,
     help: false, version: false, dir: process.cwd(),
@@ -47,6 +71,8 @@ function parse(argv) {
     else if (a === "--dir") flags.dir = path.resolve(argv[++i] ?? process.cwd());
     else if (a === "--image") flags.image = argv[++i];
     else if (a === "--gitops-repo") flags.gitopsRepo = argv[++i];
+    else if (a === "--policy-ref") flags.policyRef = argv[++i];
+    else if (a === "--out") flags.out = argv[++i];
     else if (a === "--tag") flags.tag = argv[++i];
     else if (a === "--env") flags.env = argv[++i];
     else if (a === "--repo") flags.repo = argv[++i];
@@ -80,7 +106,7 @@ async function main() {
       runInit({ root: flags.dir, dryRun: flags.dryRun, force: flags.force });
       break;
     case "gate": {
-      const run = runGate({ root: flags.dir, json: flags.json });
+      const run = runGate({ root: flags.dir, json: flags.json, policyRef: flags.policyRef });
       process.exitCode = run.exitCode;
       break;
     }
@@ -106,6 +132,10 @@ async function main() {
       process.exitCode = result.exitCode;
       break;
     }
+    case "report": {
+      process.exitCode = runReport({ root: flags.dir, out: flags.out, json: flags.json }).exitCode;
+      break;
+    }
     case "pin": {
       const resolveRef = await makeGhResolver();
       const report = await pinWorkflows({
@@ -123,6 +153,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stderr.write(`[esteira] ${error.message}\n`);
+  process.stderr.write(`[esteira] ${errorLine(error)}\n`);
   process.exitCode = 1;
 });

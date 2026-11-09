@@ -1,3 +1,4 @@
+/** @typedef {import("../types.js").FileFingerprint} FileFingerprint */
 import path from "node:path";
 import { listDir } from "./fs-tools.mjs";
 
@@ -21,6 +22,7 @@ export const SPECIAL_FILES = new Set([
   "azure-pipelines.yml", "bitbucket-pipelines.yml", "playbook.yml",
 ]);
 
+/** @param {string} name */
 export function extOf(name) {
   if (name.startsWith(".") && !name.slice(1).includes(".")) return name;
   const i = name.lastIndexOf(".");
@@ -28,11 +30,13 @@ export function extOf(name) {
 }
 
 /** Counts files by extension/signature. Never throws; bounded by maxFiles. */
+/** @param {string} root @returns {FileFingerprint} */
 export function fingerprint(root, { maxFiles = 20000 } = {}) {
+  /** @type {Map<string, number>} */
   const counts = new Map();
   let total = 0;
 
-  const walk = (rel) => {
+  const walk = (/** @type {string} */ rel) => {
     for (const entry of listDir(root, rel)) {
       if (total >= maxFiles) return;
       if (entry.isDirectory() && IGNORED_DIRS.has(entry.name)) continue;

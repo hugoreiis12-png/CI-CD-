@@ -1,9 +1,11 @@
+/** @typedef {import("../types.js").BlobEntry} BlobEntry */
+/** @typedef {import("../types.js").RunRecord} RunRecord */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { exists, readFile, writeFile, join } from "../lib/fs-tools.mjs";
+import { exists, writeFile, join, errorLine } from "../lib/fs-tools.mjs";
 
-const gitOut = (root, args) =>
+const gitOut = (/** @type {string} */ root, /** @type {string[]} */ args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 /**
@@ -15,6 +17,7 @@ const gitOut = (root, args) =>
  *   - `snapshot({path, blob}[])` — the changed set being judged
  *   - `snapshot(indexBlobs(root))` — the FULL index (the `tree` attested id)
  */
+/** @param {{ path: string, blob: string | null }[]} files */
 export function snapshot(files) {
   const hash = createHash("sha256");
   hash.update("esteira-gate-v1\n");
@@ -27,15 +30,18 @@ export function snapshot(files) {
 }
 
 /** Full index content: path → blob SHA (all staged/tracked entries). */
+/** @param {string} root @returns {BlobEntry[]} */
 export function indexBlobs(root) {
   return parseLsFiles(gitOut(root, ["ls-files", "-s"]));
 }
 
 /** Full committed content of a ref (default HEAD): path → blob SHA. */
+/** @param {string} root @returns {BlobEntry[]} */
 export function treeBlobs(root, ref = "HEAD") {
   return parseLsTree(gitOut(root, ["ls-tree", "-r", ref]));
 }
 
+/** @param {string} text @returns {BlobEntry[]} */
 function parseLsFiles(text) {
   // "100644 <blob> 0\tpath"
   return text.split("\n").filter(Boolean).map((line) => {
@@ -45,6 +51,7 @@ function parseLsFiles(text) {
   });
 }
 
+/** @param {string} text @returns {BlobEntry[]} */
 function parseLsTree(text) {
   // "100644 blob <blob>\tpath"
   return text.split("\n").filter(Boolean).map((line) => {
@@ -60,6 +67,7 @@ function parseLsTree(text) {
  * snapshot id must exist among .esteira/runs records with verdict=approved.
  * Commits that bypassed the gate (--no-verify) therefore cannot be pushed.
  */
+/** @param {{ root: string, json?: boolean }} options */
 export function verifyAttestation({ root, json = false }) {
   let head;
   try {
@@ -67,7 +75,7 @@ export function verifyAttestation({ root, json = false }) {
   } catch (error) {
     return result({
       root, json, ok: false, exitCode: 1,
-      message: `No HEAD tree to attest (${error.message.split("\n")[0]}).`,
+      message: `No HEAD tree to attest (${errorLine(error)}).`,
     });
   }
 
@@ -99,11 +107,16 @@ export function verifyAttestation({ root, json = false }) {
   });
 }
 
+/**
+ * @template {{ json: boolean, ok: boolean, message: string }} R
+ * @param {R} r
+ */
 function result(r) {
   if (!r.json) process.stdout.write(`Esteira attest — ${r.ok ? "approved" : "blocked"}\n${r.message}\n`);
   return { ...r };
 }
 
+/** @param {string} file @returns {Partial<RunRecord> | null} */
 function readFileSafe(file) {
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
@@ -112,9 +125,10 @@ function readFileSafe(file) {
   }
 }
 
-const runShort = (run) => run.snapshot?.slice(0, 12) ?? "…";
+const runShort = (/** @type {Partial<RunRecord>} */ run) => run.snapshot?.slice(0, 12) ?? "…";
 
 /** Writes the audit-trail run record under .esteira/runs/<short>.json (idempotent). */
+/** @param {string} root @param {RunRecord} run */
 export function writeRun(root, run) {
   const rel = `.esteira/runs/${run.id}.json`;
   writeFile(root, rel, `${JSON.stringify(run, null, 2)}\n`);

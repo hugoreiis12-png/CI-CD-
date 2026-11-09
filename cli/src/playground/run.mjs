@@ -1,3 +1,6 @@
+/** @typedef {import("../types.js").Commands} Commands */
+/** @typedef {import("../types.js").Finding} Finding */
+/** @typedef {import("../types.js").PlaygroundSettings} PlaygroundSettings */
 import fs from "node:fs";
 import { stageCommit, headCommit, extractCommit, makeTempPlayground } from "./workspace.mjs";
 import { runCommand } from "./runner.mjs";
@@ -10,6 +13,10 @@ import { evaluateSuite, evaluateTypecheck } from "./gates.mjs";
  *   3. both extracted to temp dirs via `git archive`
  *   4. commands run twice (staged + baseline) and compared
  * Nothing in the developer's working tree or the real repository is touched.
+ */
+/**
+ * @param {{ root: string, settings?: Partial<PlaygroundSettings>, commands: Commands }} input
+ * @returns {{ ran: true, findings: Finding[], lines: string[], results: object[], stagedSha: string, headSha: string | null }}
  */
 export function runPlayground({ root, settings, commands }) {
   const configured = {
@@ -26,8 +33,9 @@ export function runPlayground({ root, settings, commands }) {
 
   try {
     extractCommit(root, stagedSha, stagedDir);
-    if (baselineDir) extractCommit(root, headSha, baselineDir);
+    if (baselineDir && headSha) extractCommit(root, headSha, baselineDir);
 
+    /** @type {Finding[]} */
     const findings = [];
     const lines = [`staged ${stagedSha.slice(0, 10)}`, `HEAD   ${headSha ? headSha.slice(0, 10) : "(none)"}`];
     const results = [];

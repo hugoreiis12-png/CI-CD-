@@ -2,14 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { exists, readFile, join } from "../lib/fs-tools.mjs";
+import { exists, readFile, join, errorLine } from "../lib/fs-tools.mjs";
 
 const HOOKS_DIR = ".esteira/hooks";
 // The CLI that ran `init`. Baked into the hook as an absolute path so the hook
 // never executes a gate that lives inside the repo being committed (S6).
 const SELF_CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "index.mjs");
 
-const shq = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
+const shq = (/** @type {string} */ value) => `'${String(value).replace(/'/g, "'\\''")}'`;
 
 /**
  * Hook body. Fails closed when no gate runner exists (S6): an explicit
@@ -17,6 +17,7 @@ const shq = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
  * Chains the hooks that were active before init (S7); pre-push forwards
  * the ref list git sends on stdin.
  */
+/** @param {{ name: "pre-commit" | "pre-push", command: string, cli: string, previous: string | null }} hook */
 export function renderHook({ name, command, cli, previous }) {
   const isPush = name === "pre-push";
   const marker = isPush
@@ -53,13 +54,16 @@ exit 0
 `;
 }
 
+/** @type {{ name: "pre-commit" | "pre-push", command: string }[]} */
 const HOOKS = [
   { name: "pre-commit", command: "gate --staged" },
   { name: "pre-push", command: "attest --verify" },
 ];
 
 /** Hooks dir active before init, to chain: core.hooksPath if set, else .git/hooks. */
+/** @param {string} root @returns {{ configured: string | null, chain: string | null }} */
 function previousHooks(root) {
+  /** @type {string | null} */
   let configured = null;
   try {
     configured = execFileSync("git", ["config", "--get", "core.hooksPath"], {
@@ -78,6 +82,7 @@ function previousHooks(root) {
   return { configured, chain };
 }
 
+/** @param {string} root */
 export function installHook(root, { cli = SELF_CLI } = {}) {
   const relCommit = `${HOOKS_DIR}/pre-commit`;
   const relPush = `${HOOKS_DIR}/pre-push`;
@@ -104,6 +109,6 @@ export function installHook(root, { cli = SELF_CLI } = {}) {
       previousHooksPath: prev.configured, chainedHooks: prev.chain,
     };
   } catch (error) {
-    return { path: relCommit, installed: false, reason: `git config failed: ${error.message}` };
+    return { path: relCommit, installed: false, reason: `git config failed: ${errorLine(error)}` };
   }
 }

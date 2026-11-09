@@ -1,3 +1,4 @@
+import { errorLine } from "../lib/fs-tools.mjs";
 /**
  * Hardening pass over generated workflows: rewrites `uses: action@ref`
  * to `uses: action@<full SHA>  # <ref>`, resolving refs through `gh api`.
@@ -9,8 +10,15 @@ const FILES = [
   ".github/workflows/esteira-release.yml",
 ];
 
+/**
+ * @typedef {{ prefix: string, action: string, ref: string, rest: string, index: number }} UsesLine
+ * @typedef {{ file: string, action?: string, ref?: string, sha?: string, reason?: string }} PinEntry
+ */
+
+/** @param {string} text @returns {UsesLine[]} */
 export function collectUses(text) {
   // matches "- uses: X@ref" and "uses: X@ref", ignoring local actions only
+  /** @type {UsesLine[]} */
   const found = [];
   const re = /^(\s*(?:-\s*)?uses:\s*)([^@\s]+)@(\S+)(.*)$/gm;
   let match;
@@ -24,6 +32,7 @@ export function collectUses(text) {
   return found;
 }
 
+/** @param {{ action: string, sha: string, originalRef: string, previousComment?: string }} input */
 export function renderPinned({ action, sha, originalRef, previousComment = "" }) {
   const comment = ` # pinned: ${originalRef}${previousComment ? ` (was ${previousComment})` : ""}`;
   return `${action}@${sha}${comment}`;
@@ -33,6 +42,18 @@ export function renderPinned({ action, sha, originalRef, previousComment = "" })
  * Rewrites every resolvable `uses:` in the given files (default: the Esteira
  * generated set). resolveRef(action, ref) -> 40-char sha; resolution failures
  * are collected, not fatal, so one bad ref doesn't block the others.
+ */
+/**
+ * @param {{
+ *   root: string,
+ *   files?: string[],
+ *   existsFile: (root: string, rel: string) => boolean,
+ *   readFile: (root: string, rel: string) => string | null,
+ *   writeFile: (root: string, rel: string, content: string) => void,
+ *   resolveRef: (action: string, ref: string) => string | Promise<string>,
+ *   dryRun?: boolean,
+ *   alreadyPinned?: (rest: string) => boolean,
+ * }} input
  */
 export async function pinWorkflows({
   root,
@@ -44,6 +65,7 @@ export async function pinWorkflows({
   dryRun = false,
   alreadyPinned = (rest) => /# pinned:/.test(rest ?? ""),
 }) {
+  /** @type {{ resolved: PinEntry[], unresolved: PinEntry[], skipped: PinEntry[], filesTouched: string[], written: string[] }} */
   const report = { resolved: [], unresolved: [], skipped: [], filesTouched: [], written: [] };
 
   for (const rel of files) {
@@ -67,7 +89,7 @@ export async function pinWorkflows({
       try {
         sha = await resolveRef(use.action, use.ref);
       } catch (error) {
-        report.unresolved.push({ file: rel, action: use.action, ref: use.ref, reason: error.message });
+        report.unresolved.push({ file: rel, action: use.action, ref: use.ref, reason: errorLine(error) });
         continue;
       }
       if (!/^[0-9a-f]{40}$/.test(sha)) {
@@ -94,7 +116,7 @@ export async function pinWorkflows({
 /** Default resolver via the `gh` CLI (uses the developer's session, no new tokens). */
 export async function makeGhResolver() {
   const { execFileSync } = await import("node:child_process");
-  return (action, ref) => execFileSync("gh", [
+  return (/** @type {string} */ action, /** @type {string} */ ref) => execFileSync("gh", [
     "api", `repos/${action}/commits/${ref}`, "--jq", ".sha",
   ], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 }

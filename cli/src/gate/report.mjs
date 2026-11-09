@@ -1,7 +1,10 @@
+/** @typedef {import("../types.js").RunRecord} RunRecord */
+/** @param {string} value */
 function title(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+/** @param {RunRecord} run */
 export function render(run) {
   const lines = [];
   lines.push(`Esteira gate — ${run.verdict}`);
@@ -10,7 +13,7 @@ export function render(run) {
   lines.push(`Record      : ${run.path ?? "(not written)"}`);
 
   if (run.playground?.ran) {
-    for (const lineItem of run.playground.lines) lines.push(`Playground  : ${lineItem}`);
+    for (const lineItem of run.playground.lines ?? []) lines.push(`Playground  : ${lineItem}`);
   } else if (run.playground?.ran === false) {
     lines.push(`Playground  : NOT RUN (${run.playground.reason})`);
   }
@@ -30,7 +33,7 @@ export function render(run) {
     run.verdict === "reproved"
       ? "Verdict     : commit BLOCKED — fix the findings above, re-stage and commit again."
       : run.attested
-        ? `Verdict     : commit may proceed. Attestation ${run.tree.slice(0, 12)}… recorded (push-gated).`
+        ? `Verdict     : commit may proceed. Attestation ${run.tree?.slice(0, 12)}… recorded (push-gated).`
         : "Verdict     : commit may proceed.",
   );
   return lines.join("\n");

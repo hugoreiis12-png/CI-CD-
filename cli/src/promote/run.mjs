@@ -1,3 +1,5 @@
+/** @typedef {import("../types.js").ExecImpl} ExecImpl */
+/** @typedef {import("../types.js").GhImpl} GhImpl */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -5,12 +7,14 @@ import { execFileSync } from "node:child_process";
 import { readJson, readFile } from "../lib/fs-tools.mjs";
 import { replaceTag, currentTag } from "./mutate.mjs";
 
+/** @param {string} root */
 function appFor(root) {
   const pkg = readJson(root, "package.json");
   const name = pkg?.name ?? path.basename(path.resolve(root));
-  return sanitize(String(name).split("/").pop());
+  return sanitize(String(name).split("/").pop() ?? "");
 }
 
+/** @param {string} value */
 function sanitize(value) {
   return String(value).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "esteira-app";
 }
@@ -22,6 +26,21 @@ function sanitize(value) {
  *
  * Injection points (exec/gh runners) keep tests offline.
  */
+/**
+ * @typedef {object} PromoteInput
+ * @property {string} root
+ * @property {string} [repo] GitOps repository (owner/name)
+ * @property {string} [app]
+ * @property {string} [tag] image tag (commit SHA)
+ * @property {string} [env] "staging" | "production"
+ * @property {boolean} [dryRun]
+ * @property {string} [cloneTarget]
+ * @property {boolean} [quiet]
+ * @property {ExecImpl} [execImpl]
+ * @property {GhImpl} [ghImpl]
+ */
+
+/** @param {PromoteInput} input */
 export async function runPromote({
   root,
   repo,
@@ -31,11 +50,11 @@ export async function runPromote({
   dryRun = false,
   cloneTarget,
   quiet = false,
-  execImpl = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(),
-  ghImpl = (args) => execFileSync("gh", args, {
+  execImpl = (/** @type {string} */ cmd, /** @type {string[]} */ args) => execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim(),
+  ghImpl = (/** @type {string[]} */ args) => execFileSync("gh", args, {
     encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
   }).trim(),
-} = {}) {
+}) {
   const opts = loadPromoteOptions({ root, repo, app, tag, env });
 
   if (dryRun) {
@@ -114,6 +133,10 @@ export async function runPromote({
   }
 }
 
+/**
+ * @param {{ root: string, repo?: string, app?: string, tag?: string, env?: string }} input
+ * @returns {{ app: string, tag: string, env: "staging" | "production", repo: string }}
+ */
 function loadPromoteOptions({ root, repo, app, tag, env }) {
   const manifest = readJson(root, ".esteira/project.json") ?? null;
   const stored = manifest?.gitops?.repo ?? null;
@@ -125,13 +148,14 @@ function loadPromoteOptions({ root, repo, app, tag, env }) {
   if (!tag) {
     throw new Error(`A --tag (commit SHA) is required for a promotion.`);
   }
-  const resolvedEnv = ["staging", "production"].includes(env) ? env : null;
+  const resolvedEnv = env === "staging" || env === "production" ? env : null;
   if (!resolvedEnv) {
     throw new Error(`env must be staging or production (got "${env}").`);
   }
   return { app: app ?? appFor(root), tag, env: resolvedEnv, repo: repo ?? stored };
 }
 
+/** @param {{ root: string, app: string, repo: string, tag: string, env: string, quiet: boolean }} input */
 function dryRunPlan({ root, app, repo, tag, env, quiet }) {
   const local = readFile(root, path.join("deploy", "k8s", "overlays", env, "kustomization.yaml"));
   const previous = local ? currentTag(local, app) : null;
@@ -157,6 +181,7 @@ function dryRunPlan({ root, app, repo, tag, env, quiet }) {
   return { dryRun: true, exitCode: 0, changed: !already, previous };
 }
 
+/** @param {string} env */
 function environmentNote(env) {
   return env === "production"
     ? "This PR targets the **production** overlay: it must be reviewed (protected environment, required reviewers)."

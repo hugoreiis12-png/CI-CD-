@@ -1,5 +1,7 @@
-const SEV_LABEL = (s) => s.toUpperCase().padEnd(8);
+/** @typedef {import("../types.js").AuditRecord} AuditRecord */
+const SEV_LABEL = (/** @type {string} */ s) => s.toUpperCase().padEnd(8);
 
+/** @param {AuditRecord} record */
 export function render(record) {
   const lines = [];
   lines.push("Esteira audit — CVE & dependency advisories (OSV.dev)");

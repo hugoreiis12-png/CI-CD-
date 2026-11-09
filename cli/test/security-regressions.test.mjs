@@ -109,6 +109,68 @@ test("S1/S5: generated CI runs the real gate on the change set", () => {
   const wf = renderWorkflow({ languages: [], commands: {} });
   assert.doesNotMatch(wf, /placeholder \(M2\)/);
   assert.match(wf, /git reset --soft "\$BASE_SHA"/);
-  assert.match(wf, /run: gh esteira gate/);
+  assert.match(wf, /run: gh esteira gate --policy-ref "\$BASE_SHA"/);
   assert.match(wf, /fetch-depth: 0/);
+});
+
+// Sprint 1 — Cloudflare-skill audit run-1 leads 1–4, the tracked-hooks bug and the playground archive cap.
+
+test("lead 1: an unreadable change set fails closed instead of approving", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-nogit-"));
+  const run = runGate({ root: dir, json: true });
+  assert.equal(run.verdict, "reproved");
+  assert.equal(run.exitCode, 1);
+  assert.equal(run.findings[0].rule, "gate-read-error");
+});
+
+test("lead 2: with --policy-ref the PR's own manifest cannot relax the gate", () => {
+  const dir = repo({ ".esteira/project.json": JSON.stringify({ gate: { mode: "block" } }) });
+  const base = git(dir, "rev-parse", "HEAD");
+  fs.writeFileSync(path.join(dir, ".esteira/project.json"), JSON.stringify({ gate: { mode: "audit", playground: { enabled: false } } }));
+  fs.writeFileSync(path.join(dir, "app.js"), `const k = "${KEY}";\n`);
+  git(dir, "add", "-A");
+  assert.equal(runGate({ root: dir, json: true, policyRef: base }).verdict, "reproved");
+  assert.equal(runGate({ root: dir, json: true }).verdict, "approved", "local mode still honours the working-tree manifest");
+  assert.equal(runGate({ root: dir, json: true, policyRef: "not-a-ref" }).findings[0].rule, "gate-policy-error");
+});
+
+test("lead 2: unknown blockAt/mode values block instead of disabling the gate", () => {
+  const dir = repo({ ".esteira/project.json": JSON.stringify({ gate: { blockAt: "none", mode: "off" } }) });
+  const run = stageAndGate(dir, "README", "clean change\n");
+  assert.equal(run.verdict, "reproved");
+  assert.equal(run.findings.filter((f) => f.rule === "gate-policy-invalid").length, 2);
+});
+
+test("lead 3: .gitattributes '-diff' does not hide added lines", () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, ".gitattributes"), "* -diff\n");
+  const run = stageAndGate(dir, "leak.js", `const k = "${KEY}";\n`);
+  assert.ok(run.findings.some((f) => f.rule === "secret-aws" && f.file === "leak.js"), JSON.stringify(run.findings));
+});
+
+test("lead 4: quoted (non-ASCII) names and names containing ' b/' are scanned", () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, "é.js"), `const k = "${KEY}";\n`);
+  fs.mkdirSync(path.join(dir, "deploy b"));
+  const run = stageAndGate(dir, "deploy b/run.js", `const k = "${KEY}";\n`);
+  const files = run.findings.filter((f) => f.rule === "secret-aws").map((f) => f.file).sort();
+  assert.deepEqual(files, ["deploy b/run.js", "é.js"]);
+});
+
+test("hooks bug: init keeps .esteira/hooks/ out of git", async () => {
+  const { runInit } = await import("../src/commands/init.mjs");
+  const dir = repo();
+  runInit({ root: dir, quiet: true });
+  assert.match(fs.readFileSync(path.join(dir, ".gitignore"), "utf8"), /^\.esteira\/hooks\/$/m);
+  assert.equal(git(dir, "status", "--porcelain", "--", ".esteira/hooks"), "");
+});
+
+test("playground extracts repos larger than the old 1 MiB stdout cap", () => {
+  const dir = repo({
+    ".esteira/project.json": JSON.stringify({ profile: { commands: { test: "node -e process.exit(0)" } } }),
+    "big.txt": "x".repeat(2 * 1024 * 1024),
+  });
+  const run = stageAndGate(dir, "README", "change\n");
+  assert.ok(!run.findings.some((f) => f.rule === "playground-error"), JSON.stringify(run.findings));
+  assert.equal(run.verdict, "approved");
 });

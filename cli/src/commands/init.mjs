@@ -9,9 +9,10 @@ const PLANNED = [
   ".esteira/project.json",
   ".github/workflows/esteira-ci.yml",
   ".esteira/hooks/pre-commit (+ git config core.hooksPath)",
-  ".gitignore (+ .esteira/runs/, .esteira/tmp/)",
+  ".gitignore (+ .esteira/runs/, .esteira/tmp/, .esteira/hooks/)",
 ];
 
+/** @param {{ root: string, dryRun?: boolean, force?: boolean, quiet?: boolean }} input */
 export function runInit({ root, dryRun = false, force = false, quiet = false }) {
   const profile = buildProfile(root);
 
@@ -28,11 +29,12 @@ export function runInit({ root, dryRun = false, force = false, quiet = false }) 
     };
   }
 
+  /** @type {{ path: string, written?: boolean, changed?: boolean, installed?: boolean, reason?: string }[]} */
   const results = [
     writeManifest(root, profile),
     writeWorkflow(root, profile, { force }),
     installHook(root),
-    { path: ".gitignore", ...appendUniqueLines(root, ".gitignore", [".esteira/runs/", ".esteira/tmp/"]) },
+    { path: ".gitignore", ...appendUniqueLines(root, ".gitignore", [".esteira/runs/", ".esteira/tmp/", ".esteira/hooks/"]) },
   ];
 
   if (!quiet) {

@@ -7,10 +7,16 @@
     "gh-esteira": "src/index.mjs"
   },
   "scripts": {
-    "test": "node --test test/",
-    "analyze": "node src/index.mjs analyze --json"
+    "test": "node --test test/*.test.mjs",
+    "analyze": "node src/index.mjs analyze --json",
+    "typecheck": "node node_modules/typescript/bin/tsc -p .",
+    "check": "npm run typecheck && npm test"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3"
   }
 }

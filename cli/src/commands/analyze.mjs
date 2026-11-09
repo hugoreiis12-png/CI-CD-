@@ -1,5 +1,7 @@
+/** @typedef {import("../types.js").Profile} Profile */
 import { buildProfile } from "../lib/profile.mjs";
 
+/** @param {Profile} profile */
 export function renderText(profile) {
   const lines = [];
   lines.push("Esteira — project analysis");
@@ -39,6 +41,7 @@ export function renderText(profile) {
   return lines.join("\n");
 }
 
+/** @param {{ root: string, json?: boolean }} input */
 export function runAnalyze({ root, json }) {
   const profile = buildProfile(root);
   process.stdout.write(json ? `${JSON.stringify(profile, null, 2)}\n` : `${renderText(profile)}\n`);

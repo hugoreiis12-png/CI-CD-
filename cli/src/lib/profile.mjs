@@ -1,18 +1,30 @@
+/** @typedef {import("../types.js").CommandKey} CommandKey */
+/** @typedef {import("../types.js").DetectorFinding} DetectorFinding */
+/** @typedef {import("../types.js").Gap} Gap */
+/** @typedef {import("../types.js").InfraFinding} InfraFinding */
+/** @typedef {import("../types.js").InfraProfile} InfraProfile */
+/** @typedef {import("../types.js").LanguageFinding} LanguageFinding */
+/** @typedef {import("../types.js").Profile} Profile */
 import { fingerprint } from "./fingerprint.mjs";
 import { detectors } from "../detectors/index.mjs";
-import { isDir } from "./fs-tools.mjs";
+import { isDir, errorLine } from "./fs-tools.mjs";
 
+/** @type {CommandKey[]} */
 export const COMMAND_KEYS = ["lint", "typecheck", "test", "build"];
 
+/** @type {InfraProfile} */
 const EMPTY_INFRA = {
   containers: false, kubernetes: false, helm: false, terraform: false,
   ansible: false, argocd: false, ciProviders: [], hasPipelines: false,
 };
 
 /** Runs every detector, merges findings into a stable ProjectProfile. */
+/** @param {string} root @returns {Profile} */
 export function buildProfile(root) {
   const files = fingerprint(root);
+  /** @type {string[]} */
   const warnings = [];
+  /** @type {DetectorFinding[]} */
   const findings = [];
 
   for (const detect of detectors) {
@@ -20,13 +32,13 @@ export function buildProfile(root) {
       const found = detect(root, files);
       if (found) findings.push(found);
     } catch (error) {
-      warnings.push(`${detect.name}: ${error.message}`);
+      warnings.push(`${detect.name}: ${errorLine(error)}`);
     }
   }
   findings.sort((a, b) => b.confidence - a.confidence);
 
   const languages = findings
-    .filter((f) => f.type === "language")
+    .filter(/** @returns {f is LanguageFinding} */ (f) => f.type === "language")
     .map((f) => ({
       id: f.id,
       confidence: f.confidence,
@@ -37,15 +49,17 @@ export function buildProfile(root) {
       commands: f.commands ?? {},
     }));
 
-  const infra = findings.find((f) => f.type === "infra")?.infra ?? { ...EMPTY_INFRA };
+  const infra = findings.find(/** @returns {f is InfraFinding} */ (f) => f.type === "infra")?.infra ?? { ...EMPTY_INFRA };
   const workspacesTool = findings.map((f) => f.workspaces).find(Boolean) ?? null;
   const layout = ["apps", "packages", "services", "libs", "modules"].filter((d) => isDir(root, d));
 
-  const commands = {};
+  /** @type {Record<CommandKey, string | null>} */
+  const commands = { lint: null, typecheck: null, test: null, build: null };
   for (const key of COMMAND_KEYS) {
     commands[key] = languages.map((l) => l.commands[key]).find(Boolean) ?? null;
   }
 
+  /** @type {Gap[]} */
   const gaps = [];
   if (languages.length === 0) {
     gaps.push({

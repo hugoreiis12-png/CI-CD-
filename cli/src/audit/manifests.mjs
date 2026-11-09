@@ -1,3 +1,4 @@
+/** @typedef {import("../types.js").SbomItem} SbomItem */
 import { readJson, readFile, exists } from "../lib/fs-tools.mjs";
 
 /**
@@ -7,28 +8,31 @@ import { readJson, readFile, exists } from "../lib/fs-tools.mjs";
  * declared range is kept and the batch query uses a conservative floor.
  */
 
+/** @param {any} pkg package.json @returns {{ name: string, range: string, kind: "prod" | "dev" }[]} */
 function npmDeps(pkg) {
   return [
-    ...Object.entries(pkg.dependencies ?? {}).map(([name, range]) => ({ name, range, kind: "prod" })),
-    ...Object.entries(pkg.optionalDependencies ?? {}).map(([name, range]) => ({ name, range, kind: "prod" })),
-    ...Object.entries(pkg.devDependencies ?? {}).map(([name, range]) => ({ name, range, kind: "dev" })),
+    ...Object.entries(pkg.dependencies ?? {}).map(([name, range]) => ({ name, range: String(range), kind: /** @type {const} */ ("prod") })),
+    ...Object.entries(pkg.optionalDependencies ?? {}).map(([name, range]) => ({ name, range: String(range), kind: /** @type {const} */ ("prod") })),
+    ...Object.entries(pkg.devDependencies ?? {}).map(([name, range]) => ({ name, range: String(range), kind: /** @type {const} */ ("dev") })),
   ];
 }
 
+/** @param {string} root @returns {SbomItem[]} */
 export function collectNpm(root) {
   const pkg = readJson(root, "package.json");
   if (!pkg) return [];
+  /** @type {Map<string, string>} */
   const lockVersions = new Map();
   const lock = readJson(root, "package-lock.json");
   if (lock?.packages) {
-    for (const [key, entry] of Object.entries(lock.packages)) {
+    for (const [key, entry] of Object.entries(/** @type {Record<string, { version?: string }>} */ (lock.packages))) {
       if (key && entry?.version) {
-        lockVersions.set(key.split("node_modules/").pop(), entry.version);
+        lockVersions.set(key.split("node_modules/").pop() ?? key, entry.version);
       }
     }
   }
   return npmDeps(pkg).map(({ name, range, kind }) => ({
-    ecosystem: "npm",
+    ecosystem: /** @type {const} */ ("npm"),
     name,
     version: lockVersions.get(name) ?? null,
     range: lockVersions.has(name) ? null : range,
@@ -38,7 +42,9 @@ export function collectNpm(root) {
   }));
 }
 
+/** @param {string} root @returns {SbomItem[]} */
 export function collectPython(root) {
+  /** @type {SbomItem[]} */
   const items = [];
   const req = readFile(root, "requirements.txt");
   if (req) {
@@ -66,9 +72,11 @@ export function collectPython(root) {
   return items;
 }
 
+/** @param {string} root @returns {SbomItem[]} */
 export function collectGo(root) {
   const mod = readFile(root, "go.mod");
   if (!mod) return [];
+  /** @type {SbomItem[]} */
   const items = [];
   for (const line of mod.split("\n")) {
     const match = line.match(/^\t([^\s]+)\s+(v[0-9][^\s]+)/);
@@ -82,9 +90,11 @@ export function collectGo(root) {
   return items;
 }
 
+/** @param {string} root @returns {SbomItem[]} */
 export function collectRust(root) {
   const cargo = readFile(root, "Cargo.toml");
   if (!cargo) return [];
+  /** @type {SbomItem[]} */
   const items = [];
   let inDeps = false;
   for (const line of cargo.split("\n")) {
@@ -103,6 +113,7 @@ export function collectRust(root) {
 }
 
 /** All supported manifests found under `root` (dedup by ecosystem+name). */
+/** @param {string} root @returns {SbomItem[]} */
 export function collectDependencies(root) {
   const [npm, python, go, rust] = [
     collectNpm(root), collectPython(root), collectGo(root), collectRust(root),
@@ -117,7 +128,9 @@ export function collectDependencies(root) {
   return items;
 }
 
+/** @param {SbomItem[]} items */
 export function sbomSummary(items) {
+  /** @type {Record<string, number>} */
   const byEcosystem = {};
   for (const it of items) byEcosystem[it.ecosystem] = (byEcosystem[it.ecosystem] ?? 0) + 1;
   return { total: items.length, byEcosystem };

@@ -1,5 +1,7 @@
+/** @typedef {import("../types.js").Profile} Profile */
 import { readJson, writeFile } from "../lib/fs-tools.mjs";
 
+/** @param {string} root @param {Profile} profile */
 export function writeManifest(root, profile) {
   const rel = ".esteira/project.json";
   const previous = readJson(root, rel);

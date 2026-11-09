@@ -1,5 +1,7 @@
+/** @typedef {import("../types.js").CommandResult} CommandResult */
 import { spawnSync } from "node:child_process";
 
+/** @param {string} cmd */
 export function splitCommand(cmd) {
   return cmd.trim().split(/\s+/).filter(Boolean);
 }
@@ -9,6 +11,7 @@ export function splitCommand(cmd) {
  * leak: NODE_TEST_CONTEXT (injected by Node's test harness) makes an inner
  * `node --test` act as a child harness and swallow exit codes.
  */
+/** @param {NodeJS.ProcessEnv} [extra] @returns {NodeJS.ProcessEnv} */
 export function gateEnv(extra = {}) {
   const env = { ...process.env, ...extra };
   delete env.NODE_TEST_CONTEXT;
@@ -22,6 +25,7 @@ export function gateEnv(extra = {}) {
  * code: 0 = ok, "timeout" = killed by the gate, 127 = command not found.
  * stdout/stderr tails are kept for diagnosis and gate verdicts.
  */
+/** @param {string} dir @param {string} cmd @returns {CommandResult} */
 export function runCommand(dir, cmd, { timeoutMs = 120_000 } = {}) {
   const started = Date.now();
   const argv = splitCommand(cmd);
@@ -35,13 +39,13 @@ export function runCommand(dir, cmd, { timeoutMs = 120_000 } = {}) {
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  const timedOut = result.error?.code === "ETIMEDOUT";
+  const timedOut = /** @type {NodeJS.ErrnoException | undefined} */ (result.error)?.code === "ETIMEDOUT";
   const code = timedOut ? "timeout" : result.status ?? "error";
   const stdout = tail(`${result.stdout ?? ""}\n${result.stderr ?? ""}`);
   return { cmd, code, ms: Date.now() - started, stdout };
 }
 
-const tail = (s, max = 4000) => (s.length > max ? `…${s.slice(-max)}` : s);
+const tail = (/** @type {string} */ s, max = 4000) => (s.length > max ? `…${s.slice(-max)}` : s);
 
 /**
  * Best-effort failure count from test-runner output. Reads failure summaries
@@ -49,6 +53,7 @@ const tail = (s, max = 4000) => (s.length > max ? `…${s.slice(-max)}` : s);
  * after ("fail 1", node TAP / "failures: 1", pytest) the keyword; falls back
  * to counting "FAIL" markers (jest/vitest/go style).
  */
+/** @param {string | null | undefined} output */
 export function countFailures(output) {
   const text = output ?? "";
   const counts = [];
