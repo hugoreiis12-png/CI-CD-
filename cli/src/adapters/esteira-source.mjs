@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Where generated workflows get the Esteira CLI from. The extension is hosted
-// in this repository (the `gh-` naming rule only applies to `gh extension
-// install owner/repo`, so CI fetches the repo at a pinned ref and runs node).
-export const ESTEIRA_REPO = "hugoreiis12-png/CI-CD-";
+// Where generated workflows get the Esteira CLI from: the extension's own
+// repository (users install it with `gh extension install`; CI fetches it at a
+// pinned ref and runs node, so no gh extension state is needed on runners).
+export const ESTEIRA_REPO = "hugoreiis12-png/gh-esteira";
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json"), "utf8"));
 /** Release tag of the CLI generating the workflow; `gh esteira pin` rewrites it to a commit SHA. */
