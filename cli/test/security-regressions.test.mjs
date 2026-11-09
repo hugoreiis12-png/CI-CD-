@@ -270,7 +270,8 @@ test("hooks prefer the gh-managed extension over a gh-esteira found on PATH", ()
   const dir = repo();
   installHook(dir, { cli: "/nonexistent" });
   const hook = fs.readFileSync(path.join(dir, ".esteira/hooks/pre-commit"), "utf8");
-  assert.ok(hook.indexOf("gh extension list") < hook.indexOf("command -v gh-esteira"), "gh extension must be tried first");
+  assert.ok(hook.indexOf('[ -f "$ESTEIRA_CLI" ]') < hook.indexOf("gh extension list"), "the CLI that ran init comes first");
+  assert.ok(hook.indexOf("gh extension list") < hook.indexOf("command -v gh-esteira"), "a gh-esteira on PATH comes last");
 });
 
 test("help: every CLI command is documented; help <cmd>, --help and help manual work", async () => {

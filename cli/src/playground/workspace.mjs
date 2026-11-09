@@ -54,6 +54,34 @@ export function extractCommit(root, commit, destDir) {
   return destDir;
 }
 
+// Installed dependencies are git-ignored, so `git archive` snapshots never
+// contain them and most real test suites cannot start. They are linked
+// (read-mostly, not copied) from the working tree into each snapshot.
+const DEP_DIRS = ["node_modules", ".venv", "venv"];
+
+/**
+ * @param {string} root project working tree
+ * @param {string} destDir extracted snapshot
+ * @returns {string[]} linked relative paths
+ */
+export function linkDependencies(root, destDir) {
+  const linked = [];
+  const folders = ["", ...fs.readdirSync(root, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !DEP_DIRS.includes(e.name))
+    .map((e) => e.name)];
+  for (const folder of folders) {
+    for (const dep of DEP_DIRS) {
+      const rel = folder ? path.join(folder, dep) : dep;
+      const source = path.join(root, rel);
+      const target = path.join(destDir, rel);
+      if (!fs.existsSync(source) || fs.existsSync(target) || !fs.existsSync(path.dirname(target))) continue;
+      fs.symlinkSync(source, target, "dir");
+      linked.push(rel);
+    }
+  }
+  return linked;
+}
+
 export function makeTempPlayground(prefix = "esteira-playground-") {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }

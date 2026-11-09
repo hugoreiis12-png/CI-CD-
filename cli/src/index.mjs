@@ -11,6 +11,8 @@ import { runGitops } from "./gitops/run.mjs";
 import { runPromote } from "./promote/run.mjs";
 import { runReport } from "./report/cloudflare.mjs";
 import { runHelp, overview } from "./commands/help.mjs";
+import { runHook } from "./hooks/run.mjs";
+import { installGlobalHooks, uninstallGlobalHooks } from "./adapters/precommit.mjs";
 import { pinWorkflows, makeGhResolver } from "./gitops/pin.mjs";
 import { exists, readFile, writeFile, errorLine } from "./lib/fs-tools.mjs";
 
@@ -25,6 +27,8 @@ const VERSION = JSON.parse(
  * @property {boolean} json
  * @property {boolean} dryRun
  * @property {boolean} force
+ * @property {boolean} [global]
+ * @property {boolean} [uninstall]
  * @property {boolean} staged
  * @property {boolean} verify
  * @property {boolean} help
@@ -54,6 +58,8 @@ function parse(argv) {
     if (a === "--json") flags.json = true;
     else if (a === "--dry-run") flags.dryRun = true;
     else if (a === "--force") flags.force = true;
+    else if (a === "--global") flags.global = true;
+    else if (a === "--uninstall") flags.uninstall = true;
     else if (a === "--staged") flags.staged = true;
     else if (a === "--verify") flags.verify = true;
     else if (a === "--dir") flags.dir = path.resolve(argv[++i] ?? process.cwd());
@@ -109,8 +115,29 @@ async function main() {
       runAnalyze({ root: flags.dir, json: flags.json });
       break;
     case "init":
+      if (flags.global) {
+        if (flags.uninstall) {
+          const { restored } = uninstallGlobalHooks();
+          process.stdout.write(`Esteira — hooks globais removidos${restored ? `; core.hooksPath global restaurado para ${restored}` : ""}.\n`);
+        } else {
+          const { dir, previous } = installGlobalHooks();
+          process.stdout.write(
+            `Esteira — hooks globais instalados em ${dir} (git config --global core.hooksPath).\n` +
+            "Agora todo repositório desta máquina passa pela esteira no commit, push, pull, merge e rebase.\n" +
+            (previous ? `Os hooks globais anteriores (${previous}) continuam rodando depois da esteira.\n` : "") +
+            "Repositórios com core.hooksPath local (husky, gh esteira init) usam os próprios hooks.\n" +
+            "Desligar num repositório: git config esteira.enabled false   ·   Remover: gh esteira init --global --uninstall\n",
+          );
+        }
+        break;
+      }
       runInit({ root: flags.dir, dryRun: flags.dryRun, force: flags.force });
       break;
+    case "hook": {
+      const stdin = process.stdin.isTTY ? "" : fs.readFileSync(0, "utf8");
+      process.exitCode = await runHook(positional[1] ?? "", { root: flags.dir, args: positional.slice(2), stdin });
+      break;
+    }
     case "gate": {
       const run = runGate({ root: flags.dir, json: flags.json, policyRef: flags.policyRef, head: flags.head });
       if (flags.json) process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);

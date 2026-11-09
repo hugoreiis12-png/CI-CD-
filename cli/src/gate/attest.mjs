@@ -62,6 +62,22 @@ function parseLsTree(text) {
 }
 
 /**
+ * Approved gate run whose full tree equals `treeId`, if any.
+ * @param {string} root @param {string} treeId
+ * @returns {Partial<RunRecord> | null}
+ */
+export function findAttestedRun(root, treeId) {
+  if (!exists(root, ".esteira/runs")) return null;
+  const dir = join(root, ".esteira", "runs");
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith(".json")) continue;
+    const run = readFileSafe(join(dir, file));
+    if (run?.verdict === "approved" && run.tree === treeId) return run;
+  }
+  return null;
+}
+
+/**
  * Push attestation (M3): a push is only allowed when HEAD's full content is
  * byte-identical to an already-approved playground run — i.e. the verified
  * snapshot id must exist among .esteira/runs records with verdict=approved.

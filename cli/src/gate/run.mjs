@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { readJson, errorLine } from "../lib/fs-tools.mjs";
 import { getStaged, headBase } from "./staged.mjs";
 import { checks } from "./checks/index.mjs";
-import { snapshot, writeRun, indexBlobs } from "./attest.mjs";
+import { snapshot, writeRun, indexBlobs, treeBlobs, findAttestedRun } from "./attest.mjs";
 import { render } from "./report.mjs";
 import { runPlayground } from "../playground/run.mjs";
 import { buildProfile } from "../lib/profile.mjs";
@@ -34,6 +34,19 @@ const indexMatchesHead = (root) => {
     return false;
   }
 };
+
+/** @param {string} root @param {string} commit @returns {string | null} first parent */
+const commitParent = (root, commit) => {
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "-q", `${commit}^1`], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
+  } catch {
+    return null;
+  }
+};
+
+/** @param {string} root */
+const emptyTree = (root) =>
+  execFileSync("git", ["hash-object", "-t", "tree", "--stdin"], { cwd: root, encoding: "utf8", input: "" }).trim();
 
 /** @param {string} root @returns {string | null} */
 const parentCommit = (root) => {
@@ -143,6 +156,62 @@ export function runGate({ root, json = false, policyRef = null, head = false }) 
     });
   }
 
+  return evaluate({
+    root, json, policyRef, fileSets: [{ label: null, files }],
+    playgroundArgs: head ? { baselineRef: parentCommit(root) } : {},
+  });
+}
+
+/**
+ * Validates commits that already exist (pre-push, pre-merge ranges): every
+ * commit's own diff goes through the static checks — so a secret added in
+ * one commit and removed in the next is still caught — and the tip runs the
+ * playground unless its exact tree was already approved. On approval the
+ * tip's tree is attested, so the push goes through.
+ * @param {{ root: string, commits: string[], json?: boolean, staticOnly?: boolean }} options oldest first;
+ *   staticOnly: only the static checks, no playground and no attestation (pull/merge analysis)
+ * @returns {RunRecord & { exitCode: number }}
+ */
+export function runGateCommits({ root, commits, json = false, staticOnly = false }) {
+  if (commits.length === 0) {
+    return finish({ root, json, verdict: "approved", exitCode: 0, findings: [], files: [], note: "Nenhum commit novo para validar." });
+  }
+  const tip = commits[commits.length - 1];
+  /** @type {{ label: string, files: StagedFile[] }[]} */
+  const fileSets = [];
+  try {
+    for (const commit of commits) {
+      const base = commitParent(root, commit) ?? emptyTree(root);
+      fileSets.push({ label: commit.slice(0, 7), files: getStaged(root, { base, target: commit }) });
+    }
+  } catch (error) {
+    return finish({
+      root, json, verdict: "reproved", exitCode: 1, files: [],
+      findings: [{ check: "gate", severity: "high", rule: "gate-read-error", file: "*", line: null, message: `Não foi possível ler os commits — nada foi validado: ${errorLine(error)}` }],
+    });
+  }
+  if (staticOnly) {
+    return evaluate({ root, json, fileSets, noAttest: true, skipPlayground: "análise estática dos commits recebidos" });
+  }
+  const tipTree = snapshot(treeBlobs(root, tip)).id;
+  return evaluate({
+    root, json, fileSets, treeRef: tip,
+    skipPlayground: findAttestedRun(root, tipTree) ? "o conteúdo do último commit já foi aprovado pelo gate" : null,
+    playgroundArgs: { stagedRef: tip, baselineRef: commitParent(root, commits[0]) },
+  });
+}
+
+/**
+ * Shared evaluation: policy → static checks per file set → playground → verdict.
+ * @param {{
+ *   root: string, json: boolean, policyRef?: string | null,
+ *   fileSets: { label: string | null, files: StagedFile[] }[],
+ *   playgroundArgs?: { baselineRef?: string | null, stagedRef?: string },
+ *   treeRef?: string, skipPlayground?: string | null, noAttest?: boolean,
+ * }} input
+ */
+function evaluate({ root, json, policyRef = null, fileSets, playgroundArgs = {}, treeRef, skipPlayground = null, noAttest = false }) {
+  const files = fileSets.flatMap((set) => set.files);
   let manifest;
   try {
     manifest = loadManifest(root, policyRef);
@@ -160,9 +229,10 @@ export function runGate({ root, json = false, policyRef = null, head = false }) 
   const findings = errors.map((message) => ({
     check: "gate", severity: /** @type {const} */ ("high"), rule: "gate-policy-invalid", file: MANIFEST, line: null, message,
   }));
-  for (const check of checks) {
+  for (const set of fileSets) for (const check of checks) {
     try {
-      findings.push(...check({ root, files, config }));
+      const found = check({ root, files: set.files, config });
+      findings.push(...(set.label ? found.map((f) => ({ ...f, message: `[commit ${set.label}] ${f.message}` })) : found));
     } catch (error) {
       findings.push({
         check: check.name ?? "unknown", severity: "high", rule: "check-error",
@@ -174,10 +244,12 @@ export function runGate({ root, json = false, policyRef = null, head = false }) 
 
   /** @type {PlaygroundOutcome | null} */
   let playground = null;
-  if (config.playground.enabled) {
+  if (skipPlayground) {
+    playground = { ran: false, reason: skipPlayground };
+  } else if (config.playground.enabled) {
     try {
       const commands = manifest?.profile?.commands ?? buildProfile(root).commands;
-      const result = runPlayground({ root, settings: config.playground, commands, ...(head ? { baselineRef: parentCommit(root) } : {}) });
+      const result = runPlayground({ root, settings: config.playground, commands, ...playgroundArgs });
       playground = { ran: result.ran, lines: result.lines, results: result.results };
       findings.push(...result.findings);
     } catch (error) {
@@ -198,7 +270,7 @@ export function runGate({ root, json = false, policyRef = null, head = false }) 
   const exitCode = verdict === "reproved" ? 1 : 0;
 
   return finish({
-    root, json, verdict, exitCode, findings, files, config, playground,
+    root, json, verdict, exitCode, findings, files, config, playground, treeRef, noAttest,
     note: blocking.length > 0 && audit
       ? "Há findings bloqueantes, mas o modo é 'audit' — commit liberado e registro gravado."
       : null,
@@ -216,6 +288,8 @@ export function runGate({ root, json = false, policyRef = null, head = false }) 
  * @property {GateConfig} [config]
  * @property {PlaygroundOutcome | null} [playground]
  * @property {string | null} [note]
+ * @property {string} [treeRef] attest this commit's tree instead of the index
+ * @property {boolean} [noAttest] never record an attestation (analysis only)
  */
 
 /** @param {GateResult} result @returns {RunRecord & { exitCode: number }} */
@@ -223,7 +297,9 @@ function finish(result) {
   const snap = snapshot(result.files);
   let tree = null;
   try {
-    if (result.files.length) tree = snapshot(indexBlobs(result.root)).id;
+    if (result.noAttest) tree = null;
+    else if (result.treeRef) tree = snapshot(treeBlobs(result.root, result.treeRef)).id;
+    else if (result.files.length) tree = snapshot(indexBlobs(result.root)).id;
   } catch {
     tree = null;
   }
