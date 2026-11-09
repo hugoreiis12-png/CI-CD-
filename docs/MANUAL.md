@@ -2,7 +2,7 @@
 
 A Esteira é uma extensão do GitHub CLI que coloca um pipeline de CI/CD com foco em segurança em qualquer projeto, com um comando. Este manual cobre o uso do dia a dia: instalar, ligar num projeto, commitar e abrir PRs com o gate ativo, configurar a política e entender o que fazer quando algo for bloqueado.
 
-> Versão documentada: **v0.1.1**. Repositório: `https://github.com/hugoreiis12-png/CI-CD-`.
+> Versão documentada: **v0.1.2**. Repositório: `https://github.com/hugoreiis12-png/gh-esteira`.
 
 ---
 
@@ -39,23 +39,23 @@ A Esteira é uma extensão do GitHub CLI que coloca um pipeline de CI/CD com foc
 
 ## 3. Instalação
 
-O `gh` só instala extensões de repositórios com nome `gh-*`, e a Esteira é hospedada no `CI-CD-`. Por isso a instalação é feita a partir de um clone local fixado numa versão:
-
 ```bash
-git clone --depth 1 --branch v0.1.1 https://github.com/hugoreiis12-png/CI-CD-.git ~/.local/share/esteira/gh-esteira
-cd ~/.local/share/esteira/gh-esteira && gh extension install .
-gh esteira --version        # → 0.1.1
+gh extension install hugoreiis12-png/gh-esteira --pin v0.1.2
+gh esteira --version        # → 0.1.2
 ```
 
-**Atualizar** para uma versão nova (`vX.Y.Z`):
+`--pin` fixa a versão (tag) instalada. Sem ele, o `gh` instala o que estiver na branch `main`.
+
+**Atualizar.** Uma extensão instalada com `--pin` não é atualizada pelo `gh extension upgrade` (o `gh` responde `pinned extensions can not be upgraded`). Reinstale apontando para a versão nova:
 
 ```bash
-git -C ~/.local/share/esteira/gh-esteira fetch --depth 1 origin tag vX.Y.Z
-git -C ~/.local/share/esteira/gh-esteira checkout -q vX.Y.Z
-gh esteira --version
+gh extension remove esteira
+gh extension install hugoreiis12-png/gh-esteira --pin vX.Y.Z
 ```
 
-**Desinstalar:** `gh extension remove esteira && rm -rf ~/.local/share/esteira/gh-esteira`. Depois, em cada projeto: `git config --unset core.hooksPath`.
+Se você instalou sem `--pin`, `gh extension upgrade esteira` traz a `main` mais recente.
+
+**Desinstalar:** `gh extension remove esteira`. Depois, em cada projeto: `git config --unset core.hooksPath`.
 
 > Se a pasta do projeto tiver `:` no nome (ex.: `CI:CD`), o `npx` deixa de funcionar ali, porque `:` é o separador do `PATH`. Nos scripts do projeto, chame os binários com `node node_modules/<pacote>/bin/<bin>`.
 
@@ -303,8 +303,8 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
-| `gate CLI not found — pre-commit blocked` | A extensão não está instalada nesta máquina | Instale (seção 3) e rode `gh esteira init` de novo |
-| `extension name must start with gh-` | `gh extension install owner/CI-CD-` | Use a instalação por clone (seção 3) |
+| `gate CLI not found — pre-commit blocked` | A extensão não está instalada nesta máquina | Instale (seção 3); os hooks passam a encontrar `gh esteira` sozinhos |
+| `extension name must start with gh-` | Nome de repositório errado no `gh extension install` | Use `hugoreiis12-png/gh-esteira` (seção 3) |
 | `playground-skipped` | Nenhum comando de teste | Preencha `profile.commands.test` |
 | Typecheck falha só no playground | O snapshot não tem `node_modules` | Tire o `typecheck` do profile e deixe-o no job `validate` |
 | `security-gate` pula os testes no 1º PR | A `main` ainda não tem o manifesto | Normal: a partir do merge, os testes rodam |
@@ -315,7 +315,7 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 
 ---
 
-## 13. Limitações conhecidas (v0.1.1)
+## 13. Limitações conhecidas (v0.1.2)
 
 - **Regras estáticas são heurísticas:** batem em texto, inclusive dentro de strings e comentários. Se um falso positivo aparecer, reescreva o trecho. Não existe allowlist por linha.
 - **Subpastas:** o `analyze` não detecta stacks em subpastas. Configure `profile.commands` à mão.

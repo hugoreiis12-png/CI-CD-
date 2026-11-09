@@ -32,7 +32,7 @@ jobs:
   security-gate:
     runs-on: ubuntu-latest
     env:
-      ESTEIRA_REPO: hugoreiis12-png/CI-CD-
+      ESTEIRA_REPO: hugoreiis12-png/gh-esteira
       ESTEIRA_REF: f68a1ceaa44c7f7e3ac93099797d554d10717ef9 # pinned: v0.1.1
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:

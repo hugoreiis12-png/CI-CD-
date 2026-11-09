@@ -131,7 +131,7 @@ test("release workflow installs the pinned CLI in a step without GITOPS_TOKEN", 
   runInit({ root: dir, quiet: true });
   runGitops({ root: dir, gitopsRepo: "acme/gitops", quiet: true });
   const wf = fileRead(dir, ".github/workflows/esteira-release.yml");
-  assert.match(wf, /ESTEIRA_REPO: hugoreiis12-png\/CI-CD-/);
+  assert.match(wf, /ESTEIRA_REPO: hugoreiis12-png\/gh-esteira/);
   assert.match(wf, /ESTEIRA_REF: v\d+\.\d+\.\d+/);
   assert.doesNotMatch(wf, /gh extension install|\|\| true|REPLACE-ME\/gh-esteira/);
   // every install step precedes, and is separate from, the step holding the token
@@ -150,6 +150,6 @@ test("pin rewrites ESTEIRA_REF to a commit SHA of ESTEIRA_REPO", async () => {
   });
   const wf = fileRead(dir, ".github/workflows/esteira-ci.yml");
   assert.match(wf, /ESTEIRA_REF: a{40} # pinned: v\d+\.\d+\.\d+/);
-  assert.ok(calls.some((c) => c.startsWith("hugoreiis12-png/CI-CD-@v")));
+  assert.ok(calls.some((c) => c.startsWith("hugoreiis12-png/gh-esteira@v")));
   assert.equal(report.unresolved.length, 0);
 });
