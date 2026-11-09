@@ -174,11 +174,12 @@ Veredito    : commit liberado. Attestation 42001f897883… registrada (libera o 
 
 ## 6. Referência de comandos
 
-Todos aceitam `--dir <path>` (o padrão é o diretório atual).
+Todos aceitam `--dir <path>` (o padrão é o diretório atual). No terminal, `gh esteira help` lista os comandos, `gh esteira help <comando>` (ou `gh esteira <comando> --help`) mostra flags e exemplos, e `gh esteira help manual` abre este manual.
 
 | Comando | O que faz | Flags |
 |---|---|---|
-| `gh esteira analyze` | Detecta linguagens, gerenciadores, frameworks, infra e comandos. Só lê. | `--json` |
+| `gh esteira help` | Ajuda em PT-BR: lista de comandos, detalhe de um comando ou o manual completo | `help <comando>`, `help manual` |
+| `gh esteira analyze` | Detecta linguagens, gerenciadores, frameworks, infra e comandos. Só lê. Se a raiz não tem manifesto, lista os projetos das subpastas | `--json` |
 | `gh esteira init` | Cria manifesto, workflow de CI e hooks. Idempotente. | `--dry-run`, `--force` (regenera o workflow) |
 | `gh esteira gate` | Roda o gate sobre o que está **staged** | `--json`, `--head` (valida e atesta o último commit), `--policy-ref <commit>` (usado no CI: lê a política desse commit) |
 | `gh esteira attest --verify` | Confere se o HEAD é um snapshot aprovado | `--json` |
@@ -326,6 +327,8 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 | `zsh: command not found: #` ou `pathspec '#'` | Comentário colado junto com o comando no zsh | Cole só o comando, ou rode `setopt interactivecomments` |
 | Push bloqueado logo no primeiro commit | O commit foi feito sem o pre-commit | `gh esteira gate --head` |
 | `extension name must start with gh-` | Nome de repositório errado no `gh extension install` | Use `hugoreiis12-png/gh-esteira` (seção 3) |
+| `analyze` mostra `Linguagens: nenhuma` | Não há manifesto (`package.json`, `pyproject.toml`, `go.mod`…) na raiz; o código está em subpastas | Veja a seção `Subprojetos` do `analyze`: rode a esteira dentro de cada repositório, ou configure `profile.commands` se for um monorepo |
+| Projeto Bun aparece como `npm` (até a v0.1.2) | O detector só conhecia o lockfile antigo `bun.lockb` | Atualize para a v0.1.3, que reconhece também o `bun.lock` |
 | `playground-skipped` | Nenhum comando de teste | Preencha `profile.commands.test` |
 | Typecheck falha só no playground | O snapshot não tem `node_modules` | Tire o `typecheck` do profile e deixe-o no job `validate` |
 | `security-gate` pula os testes no 1º PR | A `main` ainda não tem o manifesto | Normal: a partir do merge, os testes rodam |

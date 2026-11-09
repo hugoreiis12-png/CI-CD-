@@ -5,9 +5,10 @@
 /** @typedef {import("../types.js").InfraProfile} InfraProfile */
 /** @typedef {import("../types.js").LanguageFinding} LanguageFinding */
 /** @typedef {import("../types.js").Profile} Profile */
-import { fingerprint } from "./fingerprint.mjs";
+/** @typedef {import("../types.js").Subproject} Subproject */
+import { fingerprint, IGNORED_DIRS } from "./fingerprint.mjs";
 import { detectors } from "../detectors/index.mjs";
-import { isDir, errorLine } from "./fs-tools.mjs";
+import { isDir, exists, listDir, errorLine } from "./fs-tools.mjs";
 
 /** @type {CommandKey[]} */
 export const COMMAND_KEYS = ["lint", "typecheck", "test", "build"];
@@ -18,15 +19,15 @@ const EMPTY_INFRA = {
   ansible: false, argocd: false, ciProviders: [], hasPipelines: false,
 };
 
-/** Runs every detector, merges findings into a stable ProjectProfile. */
-/** @param {string} root @returns {Profile} */
-export function buildProfile(root) {
-  const files = fingerprint(root);
-  /** @type {string[]} */
-  const warnings = [];
+/**
+ * Runs every detector on one folder.
+ * @param {string} root
+ * @param {import("../types.js").FileFingerprint} files
+ * @param {string[]} warnings
+ */
+function detectAll(root, files, warnings) {
   /** @type {DetectorFinding[]} */
   const findings = [];
-
   for (const detect of detectors) {
     try {
       const found = detect(root, files);
@@ -35,7 +36,37 @@ export function buildProfile(root) {
       warnings.push(`${detect.name}: ${errorLine(error)}`);
     }
   }
-  findings.sort((a, b) => b.confidence - a.confidence);
+  return findings.sort((a, b) => b.confidence - a.confidence);
+}
+
+/**
+ * Projects one level below a root without a manifest of its own (an umbrella
+ * folder, or a repo whose code lives in a sub-folder such as cli/).
+ * @param {string} root
+ * @param {string[]} warnings
+ * @returns {Subproject[]}
+ */
+function findSubprojects(root, warnings) {
+  /** @type {Subproject[]} */
+  const found = [];
+  for (const entry of listDir(root)) {
+    if (!entry.isDirectory() || entry.name.startsWith(".") || IGNORED_DIRS.has(entry.name)) continue;
+    const dir = `${root}/${entry.name}`;
+    const languages = detectAll(dir, fingerprint(dir, { maxFiles: 5000 }), warnings)
+      .filter(/** @returns {f is LanguageFinding} */ (f) => f.type === "language")
+      .map((f) => ({ id: f.id, packageManager: f.packageManager ?? null }));
+    if (languages.length) found.push({ path: entry.name, languages, gitRepo: exists(dir, ".git") });
+  }
+  return found;
+}
+
+/** Runs every detector, merges findings into a stable ProjectProfile. */
+/** @param {string} root @returns {Profile} */
+export function buildProfile(root) {
+  const files = fingerprint(root);
+  /** @type {string[]} */
+  const warnings = [];
+  const findings = detectAll(root, files, warnings);
 
   const languages = findings
     .filter(/** @returns {f is LanguageFinding} */ (f) => f.type === "language")
@@ -59,12 +90,20 @@ export function buildProfile(root) {
     commands[key] = languages.map((l) => l.commands[key]).find(Boolean) ?? null;
   }
 
+  const subprojects = languages.length === 0 ? findSubprojects(root, warnings) : [];
+
   /** @type {Gap[]} */
   const gaps = [];
   if (languages.length === 0) {
+    const repos = subprojects.filter((p) => p.gitRepo).map((p) => p.path);
+    const inside = subprojects.filter((p) => !p.gitRepo).map((p) => p.path);
     gaps.push({
       id: "unknown-stack",
-      message: "Nenhum manifesto de linguagem encontrado na raiz; se o código está numa subpasta, configure profile.commands no .esteira/project.json.",
+      message: subprojects.length === 0
+        ? "Nenhum manifesto de linguagem (package.json, pyproject.toml, go.mod…) na raiz nem nas subpastas."
+        : "Nenhum manifesto na raiz; os projetos estão nas subpastas (veja Subprojetos)."
+          + (repos.length ? ` ${repos.join(", ")} ${repos.length > 1 ? "são repositórios git próprios" : "é um repositório git próprio"}: rode \`gh esteira init\` dentro de cada um.` : "")
+          + (inside.length ? ` Para ${inside.join(", ")} (mesmo repositório), configure profile.commands no .esteira/project.json, ex.: "npm --prefix ${inside[0]} test".` : ""),
     });
   }
   if (!commands.test) {
@@ -85,5 +124,6 @@ export function buildProfile(root) {
     commands,
     gaps,
     warnings,
+    subprojects,
   };
 }

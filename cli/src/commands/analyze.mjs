@@ -33,6 +33,14 @@ export function renderText(profile) {
     lines.push(`  ${key.padEnd(9)} ${value ?? "—"}`);
   }
 
+  if (profile.subprojects?.length) {
+    lines.push("Subprojetos :");
+    for (const p of profile.subprojects) {
+      const langs = p.languages.map((l) => `${l.id}${l.packageManager ? ` (${l.packageManager})` : ""}`).join(", ");
+      lines.push(`  - ${p.path}/  ${langs}${p.gitRepo ? "  [repositório git próprio]" : ""}`);
+    }
+  }
+
   if (profile.gaps.length) {
     lines.push("Lacunas     :");
     for (const gap of profile.gaps) lines.push(`  - [${gap.id}] ${gap.message}`);

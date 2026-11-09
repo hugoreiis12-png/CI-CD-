@@ -109,3 +109,28 @@ test("init: dry-run writes nothing, real run is idempotent", () => {
   const workflow = second.results.find((r) => r.path.endsWith("esteira-ci.yml"));
   assert.equal(workflow.written, false);
 });
+
+test("bun.lock (text lockfile, Bun >= 1.2) is detected as bun", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-bun-"));
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "x", scripts: { test: "bun test" } }));
+  fs.writeFileSync(path.join(dir, "bun.lock"), "{}\n");
+  const node = buildProfile(dir).languages.find((l) => l.id === "node");
+  assert.equal(node.packageManager, "bun");
+  assert.equal(buildProfile(dir).commands.test, "bun run test");
+});
+
+test("a root without manifests lists the projects found in sub-folders", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-umbrella-"));
+  fs.mkdirSync(path.join(dir, "web"));
+  fs.writeFileSync(path.join(dir, "web", "package.json"), JSON.stringify({ name: "web" }));
+  fs.mkdirSync(path.join(dir, "api", ".git"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "api", "pyproject.toml"), "[project]\nname = \"api\"\n");
+  fs.mkdirSync(path.join(dir, "node_modules", "dep"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "node_modules", "dep", "package.json"), "{}");
+  const profile = buildProfile(dir);
+  assert.deepEqual(profile.subprojects.map((p) => [p.path, p.languages[0].id, p.gitRepo]).sort(), [["api", "python", true], ["web", "node", false]]);
+  const gap = profile.gaps.find((g) => g.id === "unknown-stack").message;
+  assert.match(gap, /api é um repositório git próprio/);
+  assert.match(gap, /npm --prefix web test/);
+  assert.deepEqual(buildProfile(path.join(dir, "web")).subprojects, [], "no scan when the root has its own manifest");
+});
