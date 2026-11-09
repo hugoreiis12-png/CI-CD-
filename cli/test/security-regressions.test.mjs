@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { runGate } from "../src/gate/run.mjs";
 import { parsePatch } from "../src/gate/staged.mjs";
 import { isTestPath } from "../src/gate/checks/test-path.mjs";
@@ -175,4 +176,15 @@ test("playground extracts repos larger than the old 1 MiB stdout cap", () => {
   const run = stageAndGate(dir, "README", "change\n");
   assert.ok(!run.findings.some((f) => f.rule === "playground-error"), JSON.stringify(run.findings));
   assert.equal(run.verdict, "approved");
+});
+
+test("Q1: gate --json and attest --json print machine-readable output", () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, "README"), "changed\n");
+  git(dir, "add", "-A");
+  const cli = fileURLToPath(new URL("../src/index.mjs", import.meta.url));
+  const gate = spawnSync(process.execPath, [cli, "gate", "--json", "--dir", dir], { encoding: "utf8" });
+  assert.equal(JSON.parse(gate.stdout).verdict, "approved");
+  const attest = spawnSync(process.execPath, [cli, "attest", "--verify", "--json", "--dir", dir], { encoding: "utf8" });
+  assert.equal(typeof JSON.parse(attest.stdout).ok, "boolean");
 });
