@@ -114,6 +114,21 @@ export const COMMANDS = {
     flags: [],
     examples: ["gh esteira help", "gh esteira help gate", "gh esteira help manual"],
   },
+  orchestrate: {
+    summary: "Orquestrador Hermes: lê o estado do pipeline (gate + audit) e gera um plano de ações executável.",
+    usage: "gh esteira orchestrate [--dir <pasta>] [--json] [--no-llm] [--quiet]",
+    flags: [
+      ["--dir <pasta>", "raiz do projeto"],
+      ["--json", "saída em JSON (para consumo por automação)"],
+      ["--no-llm", "usa apenas o plano determinístico (sem LLM)"],
+      ["--quiet", "suprime mensagens informativas"],
+    ],
+    examples: ["gh esteira orchestrate", "gh esteira orchestrate --json", "gh esteira orchestrate --no-llm"],
+    notes:
+      "O orquestrador não reverte bloqueios determinísticos (severidade >= blockAt ou CVE >= failOn). " +
+      "Se o LLM estiver indisponível, retorna o plano determinístico de fallback. " +
+      "Exit code: 0 para approve/hold, 1 para block.",
+  },
 };
 
 /** Visão geral: todos os comandos em uma tela. */

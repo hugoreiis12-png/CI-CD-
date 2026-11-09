@@ -80,6 +80,19 @@ export function runPlayground({ root, settings, commands, baselineRef, stagedRef
 
     return { ran: true, findings, lines, results, stagedSha, headSha };
   } finally {
-    for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
+    for (const dir of tempDirs) {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // A killed process tree (Windows cmd.exe) can leave the temp dir
+        // locked briefly. Retry once after a short delay.
+        const deadline = Date.now() + 500;
+        while (Date.now() < deadline) {
+          try { fs.rmSync(dir, { recursive: true, force: true }); break; } catch {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+          }
+        }
+      }
+    }
   }
 }

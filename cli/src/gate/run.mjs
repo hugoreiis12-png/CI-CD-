@@ -15,6 +15,8 @@ import { snapshot, writeRun, indexBlobs, treeBlobs, findAttestedRun } from "./at
 import { render } from "./report.mjs";
 import { runPlayground } from "../playground/run.mjs";
 import { buildProfile } from "../lib/profile.mjs";
+import { resolveLlmSettings } from "../hermes/config.mjs";
+import { gateAdvisory } from "../hermes/advisory.mjs";
 
 /** @type {Record<Severity, number>} */
 export const SEVERITY_RANK = { low: 1, medium: 2, high: 3 };
@@ -125,12 +127,14 @@ export function readGateConfig(manifest) {
  * On approval the run record becomes a push attestation (see `attest --verify`).
  */
 /**
- * @param {{ root: string, json?: boolean, policyRef?: string | null, head?: boolean }} options
+ * @param {{ root: string, json?: boolean, policyRef?: string | null, head?: boolean, llm?: boolean, fetchImpl?: unknown }} options
  *   head: validate the HEAD commit itself (vs its parent, or the empty tree
  *   for a root commit) and attest it — for commits that skipped pre-commit.
- * @returns {RunRecord & { exitCode: number }}
+ *   llm: false to skip the Hermes advisory (default true).
+ *   fetchImpl: injected LLM transport (tests run fully offline).
+ * @returns {Promise<RunRecord & { exitCode: number }>}
  */
-export function runGate({ root, json = false, policyRef = null, head = false }) {
+export async function runGate({ root, json = false, policyRef = null, head = false, llm = true, fetchImpl }) {
   /** @type {StagedFile[]} */
   let files = [];
   try {
@@ -156,9 +160,10 @@ export function runGate({ root, json = false, policyRef = null, head = false }) 
     });
   }
 
-  return evaluate({
+  return await evaluate({
     root, json, policyRef, fileSets: [{ label: null, files }],
     playgroundArgs: head ? { baselineRef: parentCommit(root) } : {},
+    llm, fetchImpl,
   });
 }
 
@@ -170,9 +175,9 @@ export function runGate({ root, json = false, policyRef = null, head = false }) 
  * tip's tree is attested, so the push goes through.
  * @param {{ root: string, commits: string[], json?: boolean, staticOnly?: boolean }} options oldest first;
  *   staticOnly: only the static checks, no playground and no attestation (pull/merge analysis)
- * @returns {RunRecord & { exitCode: number }}
+ * @returns {Promise<RunRecord & { exitCode: number }>}
  */
-export function runGateCommits({ root, commits, json = false, staticOnly = false }) {
+export async function runGateCommits({ root, commits, json = false, staticOnly = false }) {
   if (commits.length === 0) {
     return finish({ root, json, verdict: "approved", exitCode: 0, findings: [], files: [], note: "Nenhum commit novo para validar." });
   }
@@ -191,10 +196,10 @@ export function runGateCommits({ root, commits, json = false, staticOnly = false
     });
   }
   if (staticOnly) {
-    return evaluate({ root, json, fileSets, noAttest: true, skipPlayground: "análise estática dos commits recebidos" });
+    return await evaluate({ root, json, fileSets, noAttest: true, skipPlayground: "análise estática dos commits recebidos" });
   }
   const tipTree = snapshot(treeBlobs(root, tip)).id;
-  return evaluate({
+  return await evaluate({
     root, json, fileSets, treeRef: tip,
     skipPlayground: findAttestedRun(root, tipTree) ? "o conteúdo do último commit já foi aprovado pelo gate" : null,
     playgroundArgs: { stagedRef: tip, baselineRef: commitParent(root, commits[0]) },
@@ -208,9 +213,10 @@ export function runGateCommits({ root, commits, json = false, staticOnly = false
  *   fileSets: { label: string | null, files: StagedFile[] }[],
  *   playgroundArgs?: { baselineRef?: string | null, stagedRef?: string },
  *   treeRef?: string, skipPlayground?: string | null, noAttest?: boolean,
+ *   llm?: boolean, fetchImpl?: unknown,
  * }} input
  */
-function evaluate({ root, json, policyRef = null, fileSets, playgroundArgs = {}, treeRef, skipPlayground = null, noAttest = false }) {
+async function evaluate({ root, json, policyRef = null, fileSets, playgroundArgs = {}, treeRef, skipPlayground = null, noAttest = false, llm = true, fetchImpl }) {
   const files = fileSets.flatMap((set) => set.files);
   let manifest;
   try {
@@ -269,8 +275,20 @@ function evaluate({ root, json, policyRef = null, fileSets, playgroundArgs = {},
   const verdict = blocking.length > 0 && !audit ? "reproved" : "approved";
   const exitCode = verdict === "reproved" ? 1 : 0;
 
+  // Hermes advisory (advisory only — never touches the verdict above).
+  // `llm: false` (from --no-llm) or a disabled manifest config short-circuits
+  // to null; any failure also degrades to null. A config typo never blocks.
+  let advisory = null;
+  if (llm) {
+    try {
+      advisory = await gateAdvisory({ root, manifest, config, verdict, findings, files, fetchImpl });
+    } catch {
+      advisory = null;
+    }
+  }
+
   return finish({
-    root, json, verdict, exitCode, findings, files, config, playground, treeRef, noAttest,
+    root, json, verdict, exitCode, findings, files, config, playground, treeRef, noAttest, advisory,
     note: blocking.length > 0 && audit
       ? "Há findings bloqueantes, mas o modo é 'audit' — commit liberado e registro gravado."
       : null,
@@ -290,6 +308,7 @@ function evaluate({ root, json, policyRef = null, fileSets, playgroundArgs = {},
  * @property {string | null} [note]
  * @property {string} [treeRef] attest this commit's tree instead of the index
  * @property {boolean} [noAttest] never record an attestation (analysis only)
+ * @property {import("../types.js").RunRecord["advisory"]} [advisory] Hermes advisory, when the LLM ran
  */
 
 /** @param {GateResult} result @returns {RunRecord & { exitCode: number }} */
@@ -325,6 +344,7 @@ function finish(result) {
     },
     findings: result.findings,
     playground: result.playground ?? null,
+    advisory: result.advisory ?? null,
     note: result.note ?? null,
   };
   try {

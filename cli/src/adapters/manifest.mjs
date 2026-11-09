@@ -22,6 +22,9 @@ export function writeManifest(root, profile) {
       gates: [],
     },
     audit: previous?.audit ?? { sources: ["local", "github"], schedule: "daily", failOn: "high" },
+    // LLM advisory layer (Hermes): defaults ON pointing at the local node.
+    // Turn off in .esteira/project.json: "llm": { "enabled": false }.
+    llm: previous?.llm ?? { enabled: true, endpoint: "http://192.168.0.140:11434", model: "hermes3:8b", timeoutMs: 60000 },
   };
 
   writeFile(root, rel, `${JSON.stringify(manifest, null, 2)}\n`);

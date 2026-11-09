@@ -4,6 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+
+// Disable the Hermes LLM for all gate tests: the advisory layer is tested
+// separately in hermes.test.mjs with a mocked fetch. Without this, every
+// runGate call would try to reach the real Ollama endpoint and wait 60s.
+process.env.ESTEIRA_LLM_ENABLED = "false";
 import { runInit } from "../src/commands/init.mjs";
 import { runGate } from "../src/gate/run.mjs";
 import { snapshot } from "../src/gate/attest.mjs";
@@ -60,11 +65,11 @@ test("parsePatch collects only added lines", () => {
   assert.deepEqual(parsed[0].added, ["const a = 1;", "process.exit(0);"]);
 });
 
-test("gate approves a clean change and writes a run record", () => {
+test("gate approves a clean change and writes a run record", async () => {
   const dir = repo({ "src/index.ts": "export const a = 1;\n", ".gitignore": ".esteira/runs/\n" });
   edit(dir, "src/index.ts", "export const a = 2;\nexport const b = a + 1;\n");
   git(dir, ["add", "."]);
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "approved");
   assert.equal(run.exitCode, 0);
   assert.equal(run.stats.files, 1);
@@ -72,7 +77,7 @@ test("gate approves a clean change and writes a run record", () => {
   assert.ok(run.path && fs.existsSync(path.join(dir, run.path)));
 });
 
-test("gate blocks secrets staged in code", () => {
+test("gate blocks secrets staged in code", async () => {
   const dir = repo({ "src/index.ts": "export const a = 1;\n", ".gitignore": ".esteira/runs/\n" });
   edit(dir, "src/index.ts", [
     "export const a = 1;",
@@ -80,7 +85,7 @@ test("gate blocks secrets staged in code", () => {
     'export const slack = "xoxb-1234567890abcdef";',
   ].join("\n"));
   git(dir, ["add", "."]);
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   const rules = run.findings.map((f) => f.rule);
   assert.ok(rules.includes("secret-aws"), rules.join(","));
   assert.ok(rules.includes("secret-slack"), rules.join(","));
@@ -88,27 +93,27 @@ test("gate blocks secrets staged in code", () => {
   assert.equal(run.exitCode, 1);
 });
 
-test("gate blocks dangerous patterns", () => {
+test("gate blocks dangerous patterns", async () => {
   const dir = repo({ "src/index.ts": "import { exec } from 'node:child_process';\n", ".gitignore": ".esteira/runs/\n" });
   edit(dir, "src/index.ts", [
     "import { exec } from 'node:child_process';",
     "export const run = (cmd: string) => exec('bash ' + cmd);",
   ].join("\n"));
   git(dir, ["add", "."]);
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.ok(run.findings.some((f) => f.rule === "dangerous-child-process"), run.findings.map((f) => f.rule).join(","));
   assert.equal(run.verdict, "reproved");
 });
 
-test("test/spec files are exempt from credential heuristics" , () => {
+test("test/spec files are exempt from credential heuristics" , async () => {
   const dir = repo({ "src/index.test.ts": "export const a = 1;\n", ".gitignore": ".esteira/runs/\n" });
   edit(dir, "src/index.test.ts", 'export const token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ123";\n');
   git(dir, ["add", "."]);
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "approved");
 });
 
-test("audit mode reports findings but still approves", () => {
+test("audit mode reports findings but still approves", async () => {
   const dir = repo({
     "src/index.ts": "export const a = 1;\n",
     ".esteira/project.json": JSON.stringify({ gate: { mode: "audit" } }),
@@ -116,7 +121,7 @@ test("audit mode reports findings but still approves", () => {
   });
   edit(dir, "src/index.ts", 'export const token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ123";\n');
   git(dir, ["add", "."]);
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.mode, "audit");
   assert.ok(run.findings.length > 0);
   assert.equal(run.verdict, "approved");
@@ -134,9 +139,9 @@ test("snapshot is content-addressed: same blobs -> same SHA", () => {
   assert.equal(snapshot(blobList(a)).id, snapshot(blobList(b)).id);
 });
 
-test("gate with nothing staged approves with a note", () => {
+test("gate with nothing staged approves with a note", async () => {
   const dir = repo({ "src/index.ts": "export const a = 1;\n", ".gitignore": ".esteira/runs/\n" });
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "approved");
   assert.equal(run.stats.files, 0);
   assert.match(run.note, /Nada staged/);

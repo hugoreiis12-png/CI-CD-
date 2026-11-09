@@ -14,6 +14,8 @@ import { runGate } from "../src/gate/run.mjs";
 import { runReport, toCloudflareFindings } from "../src/report/cloudflare.mjs";
 import { CATALOG } from "../src/report/catalog.mjs";
 
+process.env.ESTEIRA_LLM_ENABLED = "false";
+
 const KEY = "AKIAIOSFODNN7ABCDEFG";
 const rules = (findings) => findings.map((f) => `${f.rule}:${f.line}`);
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -78,11 +80,11 @@ test("workflows: floating actions escalate when the workflow holds write scopes;
   assert.deepEqual(rules(analyzeWorkflow(".github/workflows/x.yml", priv)), ["ci-write-all:1", "ci-floating-action-privileged:5"]);
 });
 
-test("gate: a staged workflow with expression injection is reproved", () => {
+test("gate: a staged workflow with expression injection is reproved", async () => {
   const dir = repo();
   write(dir, ".github/workflows/triage.yml", "on: issues\njobs:\n  t:\n    steps:\n      - run: echo ${{ github.event.issue.title }}\n");
   git(dir, "add", "-A");
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "reproved");
   assert.ok(run.findings.some((f) => f.rule === "ci-expression-injection" && f.line === 5));
 });
@@ -95,13 +97,13 @@ test("catalog: every rule the checks can emit is mapped to a skill attack class"
   for (const meta of Object.values(CATALOG)) assert.match(meta.attackClass, /^[A-Z-]+\.md#.+/);
 });
 
-test("report: gate + audit export as a findings.json the skill's validator accepts", () => {
+test("report: gate + audit export as a findings.json the skill's validator accepts", async () => {
   const dir = repo();
   write(dir, "src/config.js", `export const k = "${KEY}";\nexport const k2 = "${KEY}";\n`);
   write(dir, "src/run.js", "export const f = (s) => eval(s);\n");
   write(dir, ".github/workflows/ci.yml", "jobs:\n  a:\n    steps:\n      - uses: actions/checkout@v4\n");
   git(dir, "add", "-A");
-  runGate({ root: dir, json: true });
+  await runGate({ root: dir, json: true });
   write(dir, ".esteira/audits/latest.json", JSON.stringify({
     findings: [{ id: "GHSA-xxxx-yyyy-zzzz", package: "left-pad", version: "1.0.0", source: "package.json", severity: "high", summary: "test advisory", fixed: ["1.3.0"], ecosystem: "npm" }],
   }));

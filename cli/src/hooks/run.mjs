@@ -101,7 +101,7 @@ export async function runHook(name, { root, args, stdin }) {
   excludeRecords(root);
 
   if (name === "pre-commit" || name === "pre-merge-commit") {
-    return runGate({ root }).exitCode;
+    return (await runGate({ root })).exitCode;
   }
 
   if (name === "pre-push") {
@@ -116,7 +116,7 @@ export async function runHook(name, { root, args, stdin }) {
     }
     if (commits.length === 0) return 0;
     process.stdout.write(`Esteira pre-push — validando ${commits.length} commit(s) que ainda não estão no remoto\n`);
-    return runGateCommits({ root, commits }).exitCode;
+    return (await runGateCommits({ root, commits })).exitCode;
   }
 
   // post-merge (git pull / git merge) e post-rewrite (git pull --rebase, rebase): não bloqueiam.
@@ -129,7 +129,7 @@ export async function runHook(name, { root, args, stdin }) {
   }
   if (incoming.length === 0) return 0;
   try {
-    const run = runGateCommits({ root, commits: incoming.slice(-MAX_COMMITS), json: true, staticOnly: true });
+    const run = await runGateCommits({ root, commits: incoming.slice(-MAX_COMMITS), json: true, staticOnly: true });
     const problems = run.findings.filter((f) => !/^(?:playground-|submodule-)/.test(f.rule));
     process.stdout.write(problems.length
       ? `${renderWarnings(run, `Esteira (${name === "post-merge" ? "pull/merge" : "rebase"}) — ATENÇÃO: o que chegou tem ${problems.length} problema(s) de segurança:`)}\n`

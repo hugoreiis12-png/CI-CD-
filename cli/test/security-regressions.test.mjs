@@ -5,6 +5,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
+
+// Disable the Hermes LLM: these tests exercise the gate's deterministic
+// checks only; the advisory layer is tested in hermes.test.mjs.
+process.env.ESTEIRA_LLM_ENABLED = "false";
 import { fileURLToPath } from "node:url";
 import { runGate } from "../src/gate/run.mjs";
 import { verifyAttestation } from "../src/gate/attest.mjs";
@@ -15,6 +19,14 @@ import { renderWorkflow } from "../src/adapters/workflows.mjs";
 
 const KEY = "AKIAIOSFODNN7ABCDEFG";
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+/** Resolve a POSIX shell: Git Bash on Windows, plain `sh` on POSIX. */
+function hookShell() {
+  if (process.platform !== "win32") return "sh";
+  const gitBash = "C:\\Program Files\\Git\\usr\\bin\\sh.exe";
+  if (fs.existsSync(gitBash)) return gitBash;
+  return "sh";
+}
 
 function repo(files = { "README": "x\n" }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-sec-"));
@@ -30,40 +42,40 @@ function repo(files = { "README": "x\n" }) {
   return dir;
 }
 
-const stageAndGate = (dir, rel, body) => {
+const stageAndGate = async (dir, rel, body) => {
   fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
   fs.writeFileSync(path.join(dir, rel), body);
   git(dir, "add", "-A");
-  return runGate({ root: dir, json: true });
+  return await runGate({ root: dir, json: true });
 };
 
-test("S2: 'test' inside a directory or file name is not a test path", () => {
+test("S2: 'test' inside a directory or file name is not a test path", async () => {
   for (const p of ["src/latest/cfg.js", "contest.js", "src/attestation.mjs", "protest/x.ts"]) {
     assert.equal(isTestPath(p), false, p);
   }
   for (const p of ["test/a.js", "src/__tests__/a.ts", "a.test.ts", "b.spec.js", "fixtures/k.json", "pkg/x_test.go", "test_api.py"]) {
     assert.equal(isTestPath(p), true, p);
   }
-  const run = stageAndGate(repo(), "src/latest/cfg.js", `const k = "${KEY}";\n`);
+  const run = await stageAndGate(repo(), "src/latest/cfg.js", `const k = "${KEY}";\n`);
   assert.equal(run.verdict, "reproved");
 });
 
-test("S3: a placeholder word elsewhere on the line does not exempt a real key", () => {
-  const run = stageAndGate(repo(), "app.js", `const k = "${KEY}"; // todo rotate <later>\n`);
+test("S3: a placeholder word elsewhere on the line does not exempt a real key", async () => {
+  const run = await stageAndGate(repo(), "app.js", `const k = "${KEY}"; // todo rotate <later>\n`);
   assert.ok(run.findings.some((f) => f.rule === "secret-aws"));
-  const ok = stageAndGate(repo(), "app.js", 'const apiKey = "<your-api-key-here>";\n');
+  const ok = await stageAndGate(repo(), "app.js", 'const apiKey = "<your-api-key-here>";\n');
   assert.equal(ok.findings.filter((f) => f.check === "secrets").length, 0);
 });
 
-test("S4: a secret added to a renamed file is caught", () => {
+test("S4: a secret added to a renamed file is caught", async () => {
   const body = Array.from({ length: 30 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n";
   const dir = repo({ "old.js": body });
   git(dir, "mv", "old.js", "new.js");
-  const run = stageAndGate(dir, "new.js", `${body}const k = "${KEY}";\n`);
+  const run = await stageAndGate(dir, "new.js", `${body}const k = "${KEY}";\n`);
   assert.ok(run.findings.some((f) => f.rule === "secret-aws" && f.file === "new.js"), JSON.stringify(run.findings));
 });
 
-test("S8 + line numbers: '++' content is kept and lines are real file lines", () => {
+test("S8 + line numbers: '++' content is kept and lines are real file lines", async () => {
   const patch = [
     "diff --git a/a.js b/a.js", "--- a/a.js", "+++ b/a.js",
     "@@ -9,0 +10,2 @@", "+++token", "+ok",
@@ -73,13 +85,13 @@ test("S8 + line numbers: '++' content is kept and lines are real file lines", ()
   assert.deepEqual(file.addedLines, [10, 11]);
 
   const dir = repo({ "app.js": "a\nb\nc\nd\n" });
-  const run = stageAndGate(dir, "app.js", `a\nb\nc\nd\nconst k = "${KEY}";\n`);
+  const run = await stageAndGate(dir, "app.js", `a\nb\nc\nd\nconst k = "${KEY}";\n`);
   assert.equal(run.findings.find((f) => f.rule === "secret-aws").line, 5);
 });
 
-const hookRun = (dir, hook, env = {}) => spawnSync("sh", [path.join(dir, ".esteira/hooks", hook)], {
+const hookRun = (dir, hook, env = {}) => spawnSync(hookShell(), [path.join(dir, ".esteira/hooks", hook)], {
   cwd: dir, encoding: "utf8", input: "",
-  env: { PATH: "/usr/bin:/bin", HOME: os.tmpdir(), ...env },
+  env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: os.tmpdir(), ...env },
 });
 
 test("S6: hooks fail closed without a gate CLI and never run repo code", () => {
@@ -101,7 +113,7 @@ test("S7: a previous hooks dir is chained, and re-init never chains to itself", 
   assert.equal(res.previousHooksPath, ".husky");
   installHook(dir, { cli: "/nonexistent" });
   const hook = fs.readFileSync(path.join(dir, ".esteira/hooks/pre-commit"), "utf8");
-  assert.match(hook, /ESTEIRA_PREV_HOOKS='.*\/\.husky'/);
+  assert.match(hook, /ESTEIRA_PREV_HOOKS='.*[\\/]\.husky'/);
   const out = hookRun(dir, "pre-commit", { ESTEIRA_ALLOW_UNGATED: "1" });
   assert.equal(out.status, 3);
   assert.match(out.stdout, /husky-ran/);
@@ -119,44 +131,44 @@ test("S1/S5: generated CI runs the real gate on the change set", () => {
 
 // Sprint 1 — Cloudflare-skill audit run-1 leads 1–4, the tracked-hooks bug and the playground archive cap.
 
-test("lead 1: an unreadable change set fails closed instead of approving", () => {
+test("lead 1: an unreadable change set fails closed instead of approving", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-nogit-"));
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "reproved");
   assert.equal(run.exitCode, 1);
   assert.equal(run.findings[0].rule, "gate-read-error");
 });
 
-test("lead 2: with --policy-ref the PR's own manifest cannot relax the gate", () => {
+test("lead 2: with --policy-ref the PR's own manifest cannot relax the gate", async () => {
   const dir = repo({ ".esteira/project.json": JSON.stringify({ gate: { mode: "block" } }) });
   const base = git(dir, "rev-parse", "HEAD");
   fs.writeFileSync(path.join(dir, ".esteira/project.json"), JSON.stringify({ gate: { mode: "audit", playground: { enabled: false } } }));
   fs.writeFileSync(path.join(dir, "app.js"), `const k = "${KEY}";\n`);
   git(dir, "add", "-A");
-  assert.equal(runGate({ root: dir, json: true, policyRef: base }).verdict, "reproved");
-  assert.equal(runGate({ root: dir, json: true }).verdict, "approved", "local mode still honours the working-tree manifest");
-  assert.equal(runGate({ root: dir, json: true, policyRef: "not-a-ref" }).findings[0].rule, "gate-policy-error");
+  assert.equal((await runGate({ root: dir, json: true, policyRef: base })).verdict, "reproved");
+  assert.equal((await runGate({ root: dir, json: true })).verdict, "approved", "local mode still honours the working-tree manifest");
+  assert.equal((await runGate({ root: dir, json: true, policyRef: "not-a-ref" })).findings[0].rule, "gate-policy-error");
 });
 
-test("lead 2: unknown blockAt/mode values block instead of disabling the gate", () => {
+test("lead 2: unknown blockAt/mode values block instead of disabling the gate", async () => {
   const dir = repo({ ".esteira/project.json": JSON.stringify({ gate: { blockAt: "none", mode: "off" } }) });
-  const run = stageAndGate(dir, "README", "clean change\n");
+  const run = await stageAndGate(dir, "README", "clean change\n");
   assert.equal(run.verdict, "reproved");
   assert.equal(run.findings.filter((f) => f.rule === "gate-policy-invalid").length, 2);
 });
 
-test("lead 3: .gitattributes '-diff' does not hide added lines", () => {
+test("lead 3: .gitattributes '-diff' does not hide added lines", async () => {
   const dir = repo();
   fs.writeFileSync(path.join(dir, ".gitattributes"), "* -diff\n");
-  const run = stageAndGate(dir, "leak.js", `const k = "${KEY}";\n`);
+  const run = await stageAndGate(dir, "leak.js", `const k = "${KEY}";\n`);
   assert.ok(run.findings.some((f) => f.rule === "secret-aws" && f.file === "leak.js"), JSON.stringify(run.findings));
 });
 
-test("lead 4: quoted (non-ASCII) names and names containing ' b/' are scanned", () => {
+test("lead 4: quoted (non-ASCII) names and names containing ' b/' are scanned", async () => {
   const dir = repo();
   fs.writeFileSync(path.join(dir, "é.js"), `const k = "${KEY}";\n`);
   fs.mkdirSync(path.join(dir, "deploy b"));
-  const run = stageAndGate(dir, "deploy b/run.js", `const k = "${KEY}";\n`);
+  const run = await stageAndGate(dir, "deploy b/run.js", `const k = "${KEY}";\n`);
   const files = run.findings.filter((f) => f.rule === "secret-aws").map((f) => f.file).sort();
   assert.deepEqual(files, ["deploy b/run.js", "é.js"]);
 });
@@ -169,12 +181,12 @@ test("hooks bug: init keeps .esteira/hooks/ out of git", async () => {
   assert.equal(git(dir, "status", "--porcelain", "--", ".esteira/hooks"), "");
 });
 
-test("playground extracts repos larger than the old 1 MiB stdout cap", () => {
+test("playground extracts repos larger than the old 1 MiB stdout cap", async () => {
   const dir = repo({
     ".esteira/project.json": JSON.stringify({ profile: { commands: { test: "node -e process.exit(0)" } } }),
     "big.txt": "x".repeat(2 * 1024 * 1024),
   });
-  const run = stageAndGate(dir, "README", "change\n");
+  const run = await stageAndGate(dir, "README", "change\n");
   assert.ok(!run.findings.some((f) => f.rule === "playground-error"), JSON.stringify(run.findings));
   assert.equal(run.verdict, "approved");
 });
@@ -203,12 +215,12 @@ function embeddedRepo(dir) {
   git(inner, "commit", "-qm", "inner", "--no-verify");
 }
 
-test("gitlinks (embedded repos) do not break the gate; secrets beside them are still caught", () => {
+test("gitlinks (embedded repos) do not break the gate; secrets beside them are still caught", async () => {
   const dir = repo();
   embeddedRepo(dir);
   fs.writeFileSync(path.join(dir, "leak.js"), `const k = "${KEY}";\n`);
   execFileSync("git", ["add", "-A"], { cwd: dir, stdio: "ignore" }); // git warns about the embedded repo
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   const rules = run.findings.map((f) => f.rule);
   assert.ok(!rules.includes("gate-read-error"), JSON.stringify(run.findings));
   assert.ok(rules.includes("secret-aws"));
@@ -225,7 +237,7 @@ test("git's own stderr does not leak into the gate output", () => {
   assert.match(out.stdout, /Veredito/);
 });
 
-test("gate --head attests a root commit made without pre-commit, unblocking the push", () => {
+test("gate --head attests a root commit made without pre-commit, unblocking the push", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-head-"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@t");
@@ -235,21 +247,21 @@ test("gate --head attests a root commit made without pre-commit, unblocking the 
   git(dir, "add", "-A");
   git(dir, "commit", "-qm", "root", "--no-verify");
   assert.equal(verifyAttestation({ root: dir, json: true }).ok, false);
-  const run = runGate({ root: dir, json: true, head: true });
+  const run = await runGate({ root: dir, json: true, head: true });
   assert.equal(run.verdict, "approved");
   assert.equal(run.stats.files, 2);
   assert.equal(verifyAttestation({ root: dir, json: true }).ok, true);
 });
 
-test("gate --head judges the last commit's content and refuses a dirty index", () => {
+test("gate --head judges the last commit's content and refuses a dirty index", async () => {
   const dir = repo();
   fs.writeFileSync(path.join(dir, "leak.js"), `const k = "${KEY}";\n`);
   git(dir, "add", "-A");
   git(dir, "commit", "-qm", "leak", "--no-verify");
-  assert.equal(runGate({ root: dir, json: true, head: true }).verdict, "reproved");
+  assert.equal((await runGate({ root: dir, json: true, head: true })).verdict, "reproved");
   fs.writeFileSync(path.join(dir, "other.txt"), "y\n");
   git(dir, "add", "other.txt");
-  const dirty = runGate({ root: dir, json: true, head: true });
+  const dirty = await runGate({ root: dir, json: true, head: true });
   assert.equal(dirty.findings[0].rule, "gate-read-error");
   assert.match(dirty.findings[0].message, /--head/);
 });

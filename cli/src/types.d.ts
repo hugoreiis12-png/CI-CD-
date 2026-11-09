@@ -45,6 +45,14 @@ export interface PlaygroundSettings {
   timeoutMs: number;
 }
 
+/** LLM advisory layer (hermes/). `endpoint` null = feature off or disabled. */
+export interface LlmSettings {
+  /** Effective endpoint, or null when the feature is off or disabled. */
+  endpoint: string | null;
+  model: string;
+  timeoutMs: number;
+}
+
 export interface GateConfig {
   mode: GateMode;
   blockAt: Severity;
@@ -96,6 +104,14 @@ export interface RunRecord {
   stats: { files: number; insertions: number; deletions: number; findings: number };
   findings: Finding[];
   playground: PlaygroundOutcome | null;
+  /** Hermes advisory (hermes/advisory.mjs) — advisory only, never the verdict. */
+  advisory: {
+    model: string;
+    /** The model's full text (gate: verdict explanation; audit: CVE triage). */
+    text: string;
+    ms: number;
+    error: string | null;
+  } | null;
   note: string | null;
   path?: string | null;
 }
@@ -194,9 +210,11 @@ export interface Manifest {
     blockAt?: unknown;
     maxFileBytes?: number;
     playground?: Partial<PlaygroundSettings>;
+    llm?: { enabled?: boolean; endpoint?: string; model?: string; timeoutMs?: number };
   };
   audit?: { failOn?: string; maxDetails?: number; sources?: string[] };
   gitops?: { repo?: string };
+  llm?: { enabled?: boolean; endpoint?: string; model?: string; timeoutMs?: number };
 }
 
 // ---- audit (audit/*) ----
@@ -242,6 +260,14 @@ export interface AuditRecord {
   advisoryCount: number;
   blockers: number;
   findings: AuditFinding[];
+  /** Hermes advisory (hermes/advisory.mjs) — advisory only, never the verdict. */
+  advisory: {
+    model: string;
+    /** The model's full text (audit: CVE triage). */
+    text: string;
+    ms: number;
+    error: string | null;
+  } | null;
   note: string | null;
   path?: string | null;
 }
@@ -267,6 +293,30 @@ export interface OsvVuln {
     ranges?: { events?: { introduced?: string; fixed?: string }[] }[];
   }[];
   unavailable?: boolean;
+}
+
+// ---- orchestrator (hermes/orchestrator.mjs) ----
+
+/** A single action the orchestrator can prescribe. */
+export interface OrchestrationAction {
+  type: "approve" | "block" | "retry" | "escalate" | "fix" | "promote" | "quarantine" | "investigate";
+  target: string;
+  reason: string;
+  command?: string;
+}
+
+/** The full plan produced by the Hermes orchestrator. */
+export interface OrchestrationPlan {
+  verdict: "approve" | "block" | "hold";
+  confidence: number;
+  actions: OrchestrationAction[];
+  summary: string;
+  risks: string[];
+  next_step: string;
+  source: "hermes" | "deterministic-fallback";
+  model?: string;
+  ms?: number;
+  error?: string | null;
 }
 
 // ---- process helpers ----

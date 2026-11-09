@@ -1,5 +1,6 @@
 /** @typedef {import("../types.js").CommandResult} CommandResult */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import fs from "node:fs";
 
 /** @param {string} cmd */
 export function splitCommand(cmd) {
@@ -21,6 +22,28 @@ export function gateEnv(extra = {}) {
 }
 
 /**
+ * On Windows, resolve a bare command name to its full executable path using
+ * backslash separators (forward slashes cause cmd.exe to fail with
+ * "syntax error"). `npm`, `yarn`, `pnpm` are .cmd shims — spawning them
+ * directly raises EINVAL. Returns the name unchanged on POSIX.
+ * @param {string} name @returns {string}
+ */
+function resolveOnWindows(name) {
+  if (process.platform !== "win32") return name;
+  if (name.includes("\\") || name.includes("/")) return name;
+  const paths = (process.env.PATH ?? "").split(";").filter(Boolean);
+  const exts = (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
+  for (const dir of paths) {
+    const normalized = dir.replace(/\/g/g, "");
+    for (const ext of exts) {
+      const candidate = `${normalized}\\${name}${ext.toLowerCase()}`;
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return name;
+}
+
+/**
  * Runs a command inside the playground dir with a hard timeout.
  * code: 0 = ok, "timeout" = killed by the gate, 127 = command not found.
  * stdout/stderr tails are kept for diagnosis and gate verdicts.
@@ -29,15 +52,35 @@ export function gateEnv(extra = {}) {
 export function runCommand(dir, cmd, { timeoutMs = 120_000 } = {}) {
   const started = Date.now();
   const argv = splitCommand(cmd);
-  const result = spawnSync(argv[0], argv.slice(1), {
-    cwd: dir,
-    env: gateEnv(),
-    timeout: timeoutMs,
-    killSignal: "SIGKILL",
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024 * 16,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const isWin = process.platform === "win32";
+
+  /** @type {{ status: number | null, stdout: string, stderr: string, error?: NodeJS.ErrnoException }} */
+  let result;
+
+  if (isWin) {
+    // Windows: go through cmd.exe so .cmd/.bat shims (npm, yarn, …) work.
+    // Use backslash paths — forward slashes cause cmd.exe syntax errors.
+    const cmdExe = resolveOnWindows("cmd");
+    result = spawnSync(cmdExe, ["/c", cmd], {
+      cwd: dir,
+      env: gateEnv(),
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 16,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } else {
+    result = spawnSync(argv[0], argv.slice(1), {
+      cwd: dir,
+      env: gateEnv(),
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 16,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  }
 
   const timedOut = /** @type {NodeJS.ErrnoException | undefined} */ (result.error)?.code === "ETIMEDOUT";
   const code = timedOut ? "timeout" : result.status ?? "error";
