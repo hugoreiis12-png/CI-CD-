@@ -272,3 +272,17 @@ test("hooks prefer the gh-managed extension over a gh-esteira found on PATH", ()
   const hook = fs.readFileSync(path.join(dir, ".esteira/hooks/pre-commit"), "utf8");
   assert.ok(hook.indexOf("gh extension list") < hook.indexOf("command -v gh-esteira"), "gh extension must be tried first");
 });
+
+test("help: every CLI command is documented; help <cmd>, --help and help manual work", async () => {
+  const { COMMANDS } = await import("../src/commands/help.mjs");
+  const src = fs.readFileSync(fileURLToPath(new URL("../src/index.mjs", import.meta.url)), "utf8");
+  const cases = [...src.matchAll(/case "([a-z]+)":/g)].map((m) => m[1]);
+  for (const c of cases) assert.ok(COMMANDS[c], `command ${c} has no help entry`);
+  const cli = fileURLToPath(new URL("../src/index.mjs", import.meta.url));
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
+  assert.match(run("help").stdout, /Comandos:/);
+  assert.match(run("help", "gate").stdout, /--head/);
+  assert.equal(run("gate", "--help").stdout, run("help", "gate").stdout);
+  assert.match(run("help", "manual").stdout, /# Manual do usuário/);
+  assert.equal(run("help", "nope").status, 1);
+});

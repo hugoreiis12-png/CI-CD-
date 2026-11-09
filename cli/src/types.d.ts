@@ -158,6 +158,14 @@ export interface Gap {
   message: string;
 }
 
+/** A project found one folder below a root that has no manifest of its own. */
+export interface Subproject {
+  path: string;
+  languages: { id: string; packageManager: string | null }[];
+  /** The folder is its own git repository (not tracked by the parent). */
+  gitRepo: boolean;
+}
+
 export interface Profile {
   schemaVersion: 1;
   root: string;
@@ -169,6 +177,7 @@ export interface Profile {
   commands: Record<CommandKey, string | null>;
   gaps: Gap[];
   warnings: string[];
+  subprojects: Subproject[];
 }
 
 /** `.esteira/project.json` as written by `init`; user-editable. */

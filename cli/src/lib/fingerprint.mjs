@@ -16,7 +16,7 @@ export const SPECIAL_FILES = new Set([
   "Cargo.toml", "Cargo.lock", "pom.xml", "build.gradle", "build.gradle.kts",
   "Gemfile", "composer.json", "pyproject.toml", "requirements.txt", "setup.py",
   "Pipfile", "poetry.lock", "uv.lock", "package.json", "package-lock.json",
-  "pnpm-lock.yaml", "pnpm-workspace.yaml", "yarn.lock", "bun.lockb",
+  "pnpm-lock.yaml", "pnpm-workspace.yaml", "yarn.lock", "bun.lock", "bun.lockb",
   "tsconfig.json", "turbo.json", "nx.json", "lerna.json", "Jenkinsfile",
   "helmfile.yaml", "ansible.cfg", "terraform.tfvars", ".gitlab-ci.yml",
   "azure-pipelines.yml", "bitbucket-pipelines.yml", "playbook.yml",

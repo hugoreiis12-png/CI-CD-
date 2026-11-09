@@ -10,6 +10,7 @@ import { runAudit } from "./audit/run.mjs";
 import { runGitops } from "./gitops/run.mjs";
 import { runPromote } from "./promote/run.mjs";
 import { runReport } from "./report/cloudflare.mjs";
+import { runHelp, overview } from "./commands/help.mjs";
 import { pinWorkflows, makeGhResolver } from "./gitops/pin.mjs";
 import { exists, readFile, writeFile, errorLine } from "./lib/fs-tools.mjs";
 
@@ -18,23 +19,6 @@ const VERSION = JSON.parse(
   fs.readFileSync(path.join(here, "..", "package.json"), "utf8"),
 ).version;
 
-const HELP = `Esteira — CI/CD adaptativo com foco em segurança e auditoria de vulnerabilidades
-
-Uso:
-  gh esteira init [--dry-run] [--force] [--dir <pasta>]       liga a esteira no projeto (manifesto, workflow de CI, hooks)
-  gh esteira analyze [--json] [--dir <pasta>]                 detecta stack, comandos e lacunas (só leitura)
-  gh esteira gate [--json] [--head] [--policy-ref <commit>]   gate de segurança sobre o que está staged
-                                                              --head: valida e atesta o último commit (para commits sem pre-commit)
-  gh esteira attest --verify [--json]                         push: o HEAD precisa ser um snapshot aprovado
-  gh esteira audit [--json]                                   CVEs das dependências via OSV.dev
-  gh esteira gitops [--image <ref>] [--gitops-repo <o/r>] [--force]   K8s base+overlays, Argo CD e workflow de release
-  gh esteira pin [--dry-run] [--json]                         fixa por SHA as actions e o ESTEIRA_REF dos workflows
-  gh esteira promote --tag <sha> [--env staging|production] [--repo <o/r>] [--app <nome>] [--dry-run]   PR de promoção GitOps
-  gh esteira report [--out <caminho>] [--json]                findings.json no contrato da skill de security-audit da Cloudflare
-  gh esteira --version | --help
-
-Manual: https://github.com/hugoreiis12-png/gh-esteira/blob/main/docs/MANUAL.md
-`;
 
 /**
  * @typedef {object} Flags
@@ -115,8 +99,8 @@ async function main() {
     process.stdout.write(`${VERSION}\n`);
     return;
   }
-  if (flags.help || !command) {
-    process.stdout.write(HELP);
+  if (!command || command === "help" || flags.help) {
+    process.exitCode = runHelp(command === "help" ? positional[1] : command);
     return;
   }
 
@@ -172,7 +156,7 @@ async function main() {
       break;
     }
     default:
-      process.stderr.write(`[esteira] comando desconhecido: ${command}\n\n${HELP}`);
+      process.stderr.write(`[esteira] comando desconhecido: ${command}\n\n${overview()}`);
       process.exitCode = 1;
   }
 }

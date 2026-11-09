@@ -33,7 +33,7 @@ export function detectNode(root) {
   if (!pm) {
     if (exists(root, "pnpm-lock.yaml") || exists(root, "pnpm-workspace.yaml")) pm = "pnpm";
     else if (exists(root, "yarn.lock")) pm = "yarn";
-    else if (exists(root, "bun.lockb")) pm = "bun";
+    else if (exists(root, "bun.lock") || exists(root, "bun.lockb")) pm = "bun"; // bun.lock: text lockfile (Bun ≥ 1.2)
     else pm = "npm";
   }
   evidence.push(`package-manager:${pm}`);
