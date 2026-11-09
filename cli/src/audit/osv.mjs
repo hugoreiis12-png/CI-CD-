@@ -36,7 +36,8 @@ async function jsonFetch(url, init, { fetchImpl = (u, i) => fetch(u, i), timeout
       () => reject(new Error(`OSV request timed out: ${url} (${timeoutMs} ms)`)),
       timeoutMs,
     );
-    handle?.unref?.();
+    // Not unref'd: it is cleared in `finally`, and it must keep the process
+    // alive when the only pending work is a fetch that never settles.
   });
   try {
     const response = await Promise.race([

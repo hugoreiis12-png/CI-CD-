@@ -29,8 +29,8 @@ export function readAuditConfig(root) {
  * on CI running this command against the checkout). Concise findings, each
  * with a concrete fix ("upgrade X to >= Y"), plus persisted record.
  */
-/** @param {{ root: string, json?: boolean, fetchImpl?: FetchImpl }} input */
-export async function runAudit({ root, json = false, fetchImpl }) {
+/** @param {{ root: string, json?: boolean, fetchImpl?: FetchImpl, timeoutMs?: number }} input */
+export async function runAudit({ root, json = false, fetchImpl, timeoutMs }) {
   const config = readAuditConfig(root);
   const sbom = collectDependencies(root);
   const summary = sbomSummary(sbom);
@@ -40,7 +40,7 @@ export async function runAudit({ root, json = false, fetchImpl }) {
   let offlineNote = null;
   try {
     if (sbom.length > 0) {
-      findings = await collectCves(sbom, { fetchImpl, maxDetails: config.maxDetails });
+      findings = await collectCves(sbom, { fetchImpl, timeoutMs, maxDetails: config.maxDetails });
     }
   } catch (error) {
     offlineNote = `Advisory source unreachable — audit ran offline: ${errorLine(error)}`;
