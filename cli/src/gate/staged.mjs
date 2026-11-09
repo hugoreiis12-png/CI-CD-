@@ -5,8 +5,28 @@ import { execFileSync } from "node:child_process";
 // Per-command output cap. Exceeding it throws, and runGate fails closed (item 1).
 const BUFFER = 1024 * 1024 * 64;
 
-const run = (/** @type {string} */ root, /** @type {string[]} */ args) =>
-  execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: BUFFER });
+// stderr is captured (not printed): git's own "fatal: …" lines would otherwise
+// leak into the terminal; the error message still carries them.
+const run = (/** @type {string} */ root, /** @type {string[]} */ args, /** @type {string} */ input = "") =>
+  execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: BUFFER, input, stdio: ["pipe", "pipe", "pipe"] });
+
+// A gitlink (mode 160000) records a commit of an embedded repository, not a
+// blob of this one: there is nothing here to read or scan.
+const GITLINK = "160000";
+
+/**
+ * Base the change set is measured against. Default: HEAD (the index diff).
+ * For `gate --head`: HEAD's parent, or the empty tree for a root commit.
+ * @param {string} root
+ * @returns {string}
+ */
+export function headBase(root) {
+  try {
+    return run(root, ["rev-parse", "--verify", "HEAD^"]).trim();
+  } catch {
+    return run(root, ["hash-object", "-t", "tree", "--stdin"], "").trim();
+  }
+}
 
 // Content diffs ignore repo-controlled .gitattributes (`-diff`, textconv,
 // external drivers) so a PR cannot hide added lines from the checks (item 3).
@@ -70,18 +90,25 @@ export function parseNumstatZ(text) {
  * Collects staged changes: files, added lines, blob SHAs and blob sizes.
  * Every git failure propagates; runGate turns it into a blocking verdict.
  */
-/** @param {string} root @returns {StagedFile[]} */
-export function getStaged(root) {
+/**
+ * @param {string} root
+ * @param {{ base?: string }} [options] compare the index with this commit/tree instead of HEAD
+ * @returns {StagedFile[]}
+ */
+export function getStaged(root, { base } = {}) {
+  const against = base ? [base] : [];
   /** @type {StagedFile[]} */
   const files = [];
-  for (const { ins, del, path } of parseNumstatZ(run(root, [...DIFF, "--numstat", "-z"]))) {
+  for (const { ins, del, path } of parseNumstatZ(run(root, [...DIFF, "--numstat", "-z", ...against]))) {
+    const entry = run(root, ["ls-files", "-s", "-z", "--", literal(path)]).split("\0")[0];
+    const [mode, sha] = entry ? entry.split(/\s+/) : [];
+    const submodule = mode === GITLINK;
+    const blob = sha && !submodule ? sha : null; // null for deletions and gitlinks
+    const size = blob ? Number.parseInt(run(root, ["cat-file", "-s", blob]).trim(), 10) : null;
+
     // Diff each file by its exact path instead of re-parsing paths out of one
     // big patch header (items 3 and 4).
-    const [parsed] = parsePatch(run(root, [...TEXT_DIFF, "--", literal(path)]));
-
-    const entry = run(root, ["ls-files", "-s", "-z", "--", literal(path)]).split("\0")[0];
-    const blob = entry ? entry.split(/\s+/)[1] ?? null : null; // null for deletions
-    const size = blob ? Number.parseInt(run(root, ["cat-file", "-s", blob]).trim(), 10) : null;
+    const [parsed] = submodule ? [] : parsePatch(run(root, [...TEXT_DIFF, ...against, "--", literal(path)]));
 
     files.push({
       path,
@@ -92,6 +119,7 @@ export function getStaged(root) {
       blob,
       size,
       binary: ins === "-" || del === "-",
+      submodule,
     });
   }
   return files;

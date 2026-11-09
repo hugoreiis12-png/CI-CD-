@@ -139,7 +139,7 @@ test("gate with nothing staged approves with a note", () => {
   const run = runGate({ root: dir, json: true });
   assert.equal(run.verdict, "approved");
   assert.equal(run.stats.files, 0);
-  assert.match(run.note, /Nothing staged/);
+  assert.match(run.note, /Nada staged/);
   assert.equal(run.exitCode, 0);
 });
 

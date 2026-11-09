@@ -84,19 +84,19 @@ export function analyzeWorkflow(path, text) {
     const n = i + 1;
     if (privilegedTrigger && HEAD_REF.test(line)) {
       add("ci-privileged-pr-checkout", "high", n,
-        "pull_request_target/workflow_run checks out the PR head: contributor code runs with the base repository's secrets and write token");
+        "pull_request_target/workflow_run faz checkout do código do PR: o código do contribuidor roda com os segredos e o token de escrita do repositório");
     }
     if (scripts.has(n) && UNTRUSTED_CONTEXT.test(line)) {
       add("ci-expression-injection", "high", n,
-        "Contributor-controlled ${{ github.event… }} expanded inside a run: script (shell injection); pass it through env: and quote \"$VAR\"");
+        "${{ github.event… }} controlado pelo contribuidor expandido dentro de um script run: (injeção de shell); passe por env: e use \"$VAR\" entre aspas");
     }
     if (/^\s*permissions:\s*write-all\b/.test(line)) {
-      add("ci-write-all", "medium", n, "permissions: write-all gives every step every write scope; grant per-job least privilege");
+      add("ci-write-all", "medium", n, "permissions: write-all dá todos os escopos de escrita a todos os steps; conceda o mínimo por job");
     }
     const uses = line.match(USES);
     if (uses && !uses[1].startsWith("./") && !uses[1].startsWith("docker://") && !/^[0-9a-f]{40}$/.test(uses[2])) {
       add(privileged ? "ci-floating-action-privileged" : "ci-floating-action", privileged ? "medium" : "low", n,
-        `${uses[1]}@${uses[2]} is a mutable ref${privileged ? " in a workflow holding write scopes or secrets" : ""}; pin it to a full commit SHA (gh esteira pin)`);
+        `${uses[1]}@${uses[2]} é uma referência mutável${privileged ? " num workflow com escopos de escrita ou segredos" : ""}; fixe numa SHA de commit (gh esteira pin)`);
     }
   });
   return findings;

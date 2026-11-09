@@ -33,7 +33,7 @@ async function jsonFetch(url, init, { fetchImpl = (u, i) => fetch(u, i), timeout
   let handle;
   const timeout = new Promise((_, reject) => {
     handle = setTimeout(
-      () => reject(new Error(`OSV request timed out: ${url} (${timeoutMs} ms)`)),
+      () => reject(new Error(`requisição ao OSV estourou o tempo: ${url} (${timeoutMs} ms)`)),
       timeoutMs,
     );
     // Not unref'd: it is cleared in `finally`, and it must keep the process
@@ -49,7 +49,7 @@ async function jsonFetch(url, init, { fetchImpl = (u, i) => fetch(u, i), timeout
       timeout,
     ]);
     if (response?.ok === false) {
-      throw new Error(`OSV request failed: ${url} -> ${response?.status ?? "network"}`);
+      throw new Error(`requisição ao OSV falhou: ${url} -> ${response?.status ?? "rede"}`);
     }
     return response.json();
   } finally {

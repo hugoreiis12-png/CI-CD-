@@ -71,7 +71,7 @@ export async function runPromote({
     const kustomizationPath = path.join(cloneDir, kustomizationRel);
     if (!fs.existsSync(kustomizationPath)) {
       throw new Error(
-        `GitOps repo does not contain ${kustomizationRel}. Generate the manifests with \`gh esteira gitops\` and copy deploy/k8s/overlays to the GitOps repo.`,
+        `O repositório GitOps não contém ${kustomizationRel}. Gere os manifestos com \`gh esteira gitops\` e copie deploy/k8s/overlays para o repositório GitOps.`,
       );
     }
 
@@ -79,13 +79,13 @@ export async function runPromote({
     const mutation = replaceTag(original, opts.app, opts.tag);
     if (mutation.changed === false && mutation.reason === "already-current") {
       if (!quiet) {
-        process.stdout.write(`Esteira promote — ${opts.app}@${opts.env} already at ${opts.tag}; nothing to do.\n`);
+        process.stdout.write(`Esteira promote — ${opts.app}@${opts.env} já está em ${opts.tag}; nada a fazer.\n`);
       }
       return { changed: false, already: true, exitCode: 0 };
     }
     if (mutation.changed === false) {
       throw new Error(
-        `No image entry named "${opts.app}" found in ${kustomizationRel}. Check the GitOps layout matches apps/${opts.app}/overlays/${opts.env}.`,
+        `Nenhuma imagem chamada "${opts.app}" em ${kustomizationRel}. Confira se o repositório GitOps segue apps/${opts.app}/overlays/${opts.env}.`,
       );
     }
 
@@ -99,13 +99,13 @@ export async function runPromote({
     await execImpl("git", ["-C", cloneDir, "-c", "user.name=esteira", "-c", "user.email=esteira@ci", "commit", "-m", commitMessage]);
     await execImpl("git", ["-C", cloneDir, "push", "-u", "origin", branch]);
 
-    const title = `Promote ${opts.app} (${opts.env}) to ${opts.tag.slice(0, 10)}`;
+    const title = `Promover ${opts.app} (${opts.env}) para ${opts.tag.slice(0, 10)}`;
     const body = [
-      `Automated promotion of **${opts.app}** (${opts.env}) to image tag \`${opts.tag}\`.`,
+      `Promoção automática de **${opts.app}** (${opts.env}) para a tag de imagem \`${opts.tag}\`.`,
       "",
-      "- Image is the immutable commit SHA published by the Esteira release workflow.",
-      "- Opened after the release workflow's Trivy image scan passed.",
-      "- Verify the attestation audit log if the app repo deploys Esteira gates.",
+      "- A imagem é identificada pela SHA imutável do commit, publicada pelo workflow de release da Esteira.",
+      "- Aberto depois que o scan Trivy da imagem passou no workflow de release.",
+      "- Confira o registro de attestation se o repositório da aplicação usa os gates da Esteira.",
       "",
       environmentNote(opts.env),
     ].join("\n");
@@ -118,9 +118,9 @@ export async function runPromote({
     if (!quiet) {
       process.stdout.write(
         `Esteira promote — ${opts.app} (${opts.env}) -> ${opts.tag}\n` +
-        `Previous tag : ${mutation.previous}\n` +
+        `Tag anterior : ${mutation.previous}\n` +
         `Branch       : ${branch}\n` +
-        `PR           : ${prUrl || "(gh pr create returned no url)"}\n`,
+        `PR           : ${prUrl || "(gh pr create não retornou URL)"}\n`,
       );
     }
 
@@ -142,15 +142,15 @@ function loadPromoteOptions({ root, repo, app, tag, env }) {
   const stored = manifest?.gitops?.repo ?? null;
   if (!repo && !stored) {
     throw new Error(
-      'No GitOps repository known. Pass --repo owner/name or run gh esteira gitops --gitops-repo owner/name first.',
+      'Repositório GitOps desconhecido. Passe --repo dono/nome.',
     );
   }
   if (!tag) {
-    throw new Error(`A --tag (commit SHA) is required for a promotion.`);
+    throw new Error(`A promoção exige --tag (SHA do commit).`);
   }
   const resolvedEnv = env === "staging" || env === "production" ? env : null;
   if (!resolvedEnv) {
-    throw new Error(`env must be staging or production (got "${env}").`);
+    throw new Error(`--env precisa ser staging ou production (recebido: "${env}").`);
   }
   return { app: app ?? appFor(root), tag, env: resolvedEnv, repo: repo ?? stored };
 }
@@ -163,8 +163,8 @@ function dryRunPlan({ root, app, repo, tag, env, quiet }) {
     if (!quiet) {
       process.stdout.write(
         `Esteira promote (dry-run) — ${app} (${env}) -> ${tag}\n` +
-        "Plan: clone the GitOps repo, open a PR updating apps/"
-        + `${app}/overlays/${env} to newTag: ${tag}. (local overlay not found for a richer preview)\n`,
+        "Plano: clonar o repositório GitOps e abrir um PR atualizando apps/"
+        + `${app}/overlays/${env} para newTag: ${tag}. (overlay local não encontrado para uma prévia detalhada)\n`,
       );
     }
     return { dryRun: true, exitCode: 0, changed: true, previous: null };
@@ -173,9 +173,9 @@ function dryRunPlan({ root, app, repo, tag, env, quiet }) {
   if (!quiet) {
     process.stdout.write(
       `Esteira promote (dry-run) — ${app} (${env})\n` +
-      `Current tag  : ${previous ?? "SET-BY-GITOPS"}\n` +
-      `Target tag   : ${tag}\n` +
-      (already ? "Verdict      : already current — no PR.\n" : `Next         : clone, branch, PR updating newTag -> ${tag}\n`),
+      `Tag atual    : ${previous ?? "SET-BY-GITOPS"}\n` +
+      `Tag alvo     : ${tag}\n` +
+      (already ? "Veredito     : já está nessa tag — nenhum PR.\n" : `Próximo      : clonar, criar branch e abrir PR com newTag -> ${tag}\n`),
     );
   }
   return { dryRun: true, exitCode: 0, changed: !already, previous };
@@ -184,6 +184,6 @@ function dryRunPlan({ root, app, repo, tag, env, quiet }) {
 /** @param {string} env */
 function environmentNote(env) {
   return env === "production"
-    ? "This PR targets the **production** overlay: it must be reviewed (protected environment, required reviewers)."
-    : "Staging auto-syncs after merge (prune + self-heal).";
+    ? "Este PR altera o overlay de **production**: precisa de revisão (environment protegido, revisores obrigatórios)."
+    : "O staging sincroniza sozinho depois do merge (prune + self-heal).";
 }

@@ -26,22 +26,22 @@
 const SECRET = /** @type {const} */ ({
   attackClass: "ATTACK-CLASSES.md#Cryptography and secrets",
   verdict: "confirmed",
-  rootCause: "Credential material is committed to version control, where every reader of the repository, its forks and its clones can copy it.",
-  intended: "Credentials live in a secret manager or CI secret store and reach code only at runtime through environment or mounted files.",
-  fix: "Revoke and rotate the credential now, remove it from the change (and history if it was pushed), and load it from a secret manager or CI secret instead.",
+  rootCause: "Material de credencial foi commitado no controle de versão, onde qualquer pessoa com acesso ao repositório, aos forks e aos clones pode copiá-lo.",
+  intended: "Credenciais ficam num secret manager ou nos secrets do CI e só chegam ao código em tempo de execução, por variável de ambiente ou arquivo montado.",
+  fix: "Revogue e rotacione a credencial agora, remova-a da mudança (e do histórico, se já foi enviada) e passe a lê-la de um secret manager ou secret do CI.",
 });
 
 const DANGEROUS = {
   attackClass: "ATTACK-CLASSES.md#Injection",
   verdict: /** @type {const} */ ("needs_validation"),
-  intended: "Untrusted input never reaches code execution, shell, file-system or query sinks without validation and parameterisation.",
-  blocker: "A static pattern match does not establish that lower-trust input reaches this sink.",
-  plan: "Trace the arguments of the flagged call back to their sources; add a unit test that passes attacker-shaped input and asserts the sink rejects or escapes it.",
+  intended: "Entrada não confiável nunca chega a execução de código, shell, sistema de arquivos ou consultas sem validação e parametrização.",
+  blocker: "Uma coincidência de padrão estático não prova que entrada de menor confiança chega a este ponto.",
+  plan: "Rastreie os argumentos da chamada sinalizada até a origem; crie um teste unitário que passe uma entrada maliciosa e verifique que ela é rejeitada ou escapada.",
 };
 
 const CI = {
   verdict: /** @type {const} */ ("needs_validation"),
-  blocker: "The effect depends on which events trigger the workflow, which secrets exist and the repository's Actions settings, none of which a source match can observe.",
+  blocker: "O efeito depende de quais eventos disparam o workflow, de quais secrets existem e das configurações de Actions do repositório — nada disso é visível no código.",
 };
 
 /** @type {Record<string, RuleMeta>} */
@@ -55,59 +55,59 @@ export const CATALOG = {
   "secret-hardcoded-credential": {
     ...SECRET,
     verdict: "needs_validation",
-    rootCause: "A credential-looking literal is assigned in source.",
-    blocker: "The heuristic cannot tell whether the literal is a live credential or a non-secret identifier.",
-    plan: "Check the value against the issuing system (owner-side); if it is live, treat it as a committed credential and rotate it.",
+    rootCause: "Um literal com cara de credencial é atribuído no código.",
+    blocker: "A heurística não distingue uma credencial ativa de um identificador que não é segredo.",
+    plan: "Confira o valor no sistema que o emitiu (lado do dono); se estiver ativo, trate como credencial commitada e rotacione.",
   },
-  "dangerous-eval": { ...DANGEROUS, rootCause: "Dynamic code evaluation (eval / new Function) is added.", fix: "Replace dynamic evaluation with explicit parsing or a dispatch table." },
-  "dangerous-child-process": { ...DANGEROUS, rootCause: "A shell command is built from a single string and run through a shell.", fix: "Use execFile/spawn with an argv array and no shell." },
-  "dangerous-sql-concat": { ...DANGEROUS, rootCause: "A SQL statement is built by string concatenation.", fix: "Use parameterised queries." },
+  "dangerous-eval": { ...DANGEROUS, rootCause: "Foi adicionada avaliação dinâmica de código (eval / new Function).", fix: "Troque a avaliação dinâmica por parsing explícito ou uma tabela de despacho." },
+  "dangerous-child-process": { ...DANGEROUS, rootCause: "Um comando de shell é montado numa única string e executado por um shell.", fix: "Use execFile/spawn com array de argumentos e sem shell." },
+  "dangerous-sql-concat": { ...DANGEROUS, rootCause: "Uma instrução SQL é montada por concatenação de strings.", fix: "Use consultas parametrizadas." },
   "dangerous-curl-pipe": {
     ...DANGEROUS, attackClass: "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
-    rootCause: "A remote script is piped straight into a shell, so whoever controls that URL controls the build.",
-    fix: "Download to a file, verify a pinned checksum or signature, then execute.",
-    blocker: "Who controls the remote URL and whether its content is integrity-checked elsewhere is outside the source.",
-    plan: "Pin the script by checksum in the repository and fail the step when it differs.",
+    rootCause: "Um script remoto é enviado direto para um shell; quem controla essa URL controla o build.",
+    fix: "Baixe para um arquivo, verifique um checksum ou assinatura fixados e só então execute.",
+    blocker: "Quem controla a URL remota, e se o conteúdo é verificado em outro lugar, não aparece no código.",
+    plan: "Fixe o script por checksum no repositório e faça o step falhar quando divergir.",
   },
-  "dangerous-rm-rf": { ...DANGEROUS, attackClass: "ATTACK-CLASSES.md#Resource and file handling", rootCause: "A forced recursive delete targets / or ~.", fix: "Scope deletes to a validated, non-empty directory variable." },
-  "dangerous-chmod-777": { ...DANGEROUS, attackClass: "ATTACK-CLASSES.md#Resource and file handling", rootCause: "World-writable permissions are set.", fix: "Grant the minimum mode the owning process needs." },
-  "dangerous-insecure-tls": { ...DANGEROUS, attackClass: "ATTACK-CLASSES.md#Cryptography and secrets", rootCause: "TLS certificate verification is disabled.", fix: "Keep verification on; trust a private CA explicitly instead of disabling checks." },
+  "dangerous-rm-rf": { ...DANGEROUS, attackClass: "ATTACK-CLASSES.md#Resource and file handling", rootCause: "Uma remoção recursiva forçada mira / ou ~.", fix: "Limite a remoção a uma variável de diretório validada e não vazia." },
+  "dangerous-chmod-777": { ...DANGEROUS, attackClass: "ATTACK-CLASSES.md#Resource and file handling", rootCause: "Permissão de escrita para todos é aplicada.", fix: "Conceda só a permissão mínima de que o processo dono precisa." },
+  "dangerous-insecure-tls": { ...DANGEROUS, attackClass: "ATTACK-CLASSES.md#Cryptography and secrets", rootCause: "A verificação de certificado TLS está desligada.", fix: "Mantenha a verificação; confie explicitamente numa CA privada em vez de desligar a checagem." },
   "ci-privileged-pr-checkout": {
     ...CI, attackClass: "SUPPLY-CHAIN-AND-RELEASE.md#Untrusted code in a privileged workflow",
-    rootCause: "A pull_request_target/workflow_run workflow checks out the pull request head, so contributor code runs with the base repository's secrets and write token.",
-    intended: "Privileged workflows never execute code from an untrusted ref.",
-    fix: "Use the pull_request event for untrusted code, or split into an unprivileged build and a privileged job that only consumes digest-bound artifacts.",
-    plan: "In a throwaway fork, open a PR whose build script prints whether secrets are set (never their values) and observe the privileged run.",
+    rootCause: "Um workflow pull_request_target/workflow_run faz checkout do código do PR, então o código do contribuidor roda com os segredos e o token de escrita do repositório base.",
+    intended: "Workflows privilegiados nunca executam código de uma referência não confiável.",
+    fix: "Use o evento pull_request para código não confiável, ou separe um build sem privilégio de um job privilegiado que só consome artefatos presos a digest.",
+    plan: "Num fork descartável, abra um PR cujo script de build imprima se os secrets existem (nunca os valores) e observe a execução privilegiada.",
   },
   "ci-expression-injection": {
     ...CI, attackClass: "SUPPLY-CHAIN-AND-RELEASE.md#Workflow command and expression confusion",
-    rootCause: "A contributor-controlled ${{ github.event… }} value is expanded into a run: script before the shell parses it.",
-    intended: "Untrusted event fields reach scripts only as quoted environment variables.",
-    fix: "Move the expression into env: (FOO: ${{ … }}) and reference \"$FOO\" in the script.",
-    plan: "Run the workflow locally (e.g. with act) with an event payload whose title is `a\"; echo INJECTED; #` and check whether INJECTED is printed.",
+    rootCause: "Um valor ${{ github.event… }} controlado pelo contribuidor é expandido dentro de um script run: antes de o shell interpretá-lo.",
+    intended: "Campos não confiáveis do evento só chegam aos scripts como variáveis de ambiente entre aspas.",
+    fix: "Mova a expressão para env: (FOO: ${{ … }}) e use \"$FOO\" no script.",
+    plan: "Rode o workflow localmente (por exemplo, com act) com um evento cujo título seja `a\"; echo INJETADO; #` e veja se INJETADO aparece.",
   },
   "ci-floating-action-privileged": {
     ...CI, attackClass: "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
-    rootCause: "A third-party action is referenced by a mutable tag or branch inside a workflow that holds write scopes or secrets.",
-    intended: "Code that receives write scopes or secrets is bound to an immutable, reviewed commit.",
-    fix: "Pin every uses: to a full 40-character commit SHA (gh esteira pin) and review updates.",
-    plan: "Run `gh esteira pin --dry-run` and confirm every flagged line would be rewritten to a SHA.",
+    rootCause: "Uma action de terceiros é referenciada por tag ou branch mutável num workflow com escopos de escrita ou segredos.",
+    intended: "Código que recebe escopos de escrita ou segredos fica preso a um commit imutável e revisado.",
+    fix: "Fixe todo uses: numa SHA completa de 40 caracteres (gh esteira pin) e revise as atualizações.",
+    plan: "Rode `gh esteira pin --dry-run` e confirme que toda linha sinalizada seria reescrita para uma SHA.",
   },
   "ci-floating-action": {
     ...CI, attackClass: "SUPPLY-CHAIN-AND-RELEASE.md#Mutable and unbound build inputs",
-    rootCause: "A third-party action is referenced by a mutable tag or branch.",
-    intended: "Build inputs are bound to immutable commits.",
-    fix: "Pin the action to a full commit SHA (gh esteira pin).",
-    plan: "Run `gh esteira pin --dry-run`.",
+    rootCause: "Uma action de terceiros é referenciada por tag ou branch mutável.",
+    intended: "As entradas do build ficam presas a commits imutáveis.",
+    fix: "Fixe a action numa SHA completa de commit (gh esteira pin).",
+    plan: "Rode `gh esteira pin --dry-run`.",
   },
   "ci-write-all": {
     ...CI, attackClass: "SUPPLY-CHAIN-AND-RELEASE.md#Automation identity overreach",
-    rootCause: "permissions: write-all gives every step of the workflow every write scope.",
-    intended: "Each job receives only the scopes its operation needs.",
-    fix: "Set workflow permissions to contents: read and grant write scopes per job.",
-    plan: "List each job's real operations and compare them with the granted scopes.",
+    rootCause: "permissions: write-all dá todos os escopos de escrita a todos os steps do workflow.",
+    intended: "Cada job recebe só os escopos de que sua operação precisa.",
+    fix: "Defina contents: read no workflow e conceda escopos de escrita por job.",
+    plan: "Liste as operações reais de cada job e compare com os escopos concedidos.",
   },
 };
 
 /** Rules that describe the gate's own operation, not a vulnerability. */
-export const OPERATIONAL = /^(?:playground-|gate-|check-error$|large-file$)/;
+export const OPERATIONAL = /^(?:playground-|gate-|check-error$|large-file$|submodule-not-scanned$)/;

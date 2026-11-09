@@ -9,7 +9,7 @@
 /** @typedef {import("../types.js").Verdict} Verdict */
 import { execFileSync } from "node:child_process";
 import { readJson, errorLine } from "../lib/fs-tools.mjs";
-import { getStaged } from "./staged.mjs";
+import { getStaged, headBase } from "./staged.mjs";
 import { checks } from "./checks/index.mjs";
 import { snapshot, writeRun, indexBlobs } from "./attest.mjs";
 import { render } from "./report.mjs";
@@ -24,6 +24,25 @@ const isSeverity = (value) => typeof value === "string" && Object.hasOwn(SEVERIT
 const isMode = (value) => value === "block" || value === "audit";
 
 const MANIFEST = ".esteira/project.json";
+
+/** @param {string} root */
+const indexMatchesHead = (root) => {
+  try {
+    execFileSync("git", ["diff", "--cached", "--quiet"], { cwd: root, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** @param {string} root @returns {string | null} */
+const parentCommit = (root) => {
+  try {
+    return execFileSync("git", ["rev-parse", "--verify", "HEAD^"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+};
 
 /**
  * The project manifest. With `policyRef` (CI) it is read from that trusted
@@ -49,7 +68,7 @@ export function loadManifest(root, policyRef = null) {
   try {
     return JSON.parse(text);
   } catch (error) {
-    throw new Error(`${MANIFEST} at ${policyRef} is not valid JSON: ${errorLine(error)}`);
+    throw new Error(`${MANIFEST} em ${policyRef} não é um JSON válido: ${errorLine(error)}`);
   }
 }
 
@@ -66,10 +85,10 @@ export function readGateConfig(manifest) {
   /** @type {string[]} */
   const errors = [];
   if (gate.mode !== undefined && !isMode(gate.mode)) {
-    errors.push(`gate.mode must be one of block|audit (got ${JSON.stringify(gate.mode)})`);
+    errors.push(`gate.mode precisa ser block|audit (recebido: ${JSON.stringify(gate.mode)})`);
   }
   if (gate.blockAt !== undefined && !isSeverity(gate.blockAt)) {
-    errors.push(`gate.blockAt must be one of ${Object.keys(SEVERITY_RANK).join("|")} (got ${JSON.stringify(gate.blockAt)})`);
+    errors.push(`gate.blockAt precisa ser ${Object.keys(SEVERITY_RANK).join("|")} (recebido: ${JSON.stringify(gate.blockAt)})`);
   }
   const config = {
     mode: isMode(gate.mode) ? gate.mode : "block",
@@ -93,21 +112,26 @@ export function readGateConfig(manifest) {
  * On approval the run record becomes a push attestation (see `attest --verify`).
  */
 /**
- * @param {{ root: string, json?: boolean, policyRef?: string | null }} options
+ * @param {{ root: string, json?: boolean, policyRef?: string | null, head?: boolean }} options
+ *   head: validate the HEAD commit itself (vs its parent, or the empty tree
+ *   for a root commit) and attest it — for commits that skipped pre-commit.
  * @returns {RunRecord & { exitCode: number }}
  */
-export function runGate({ root, json = false, policyRef = null }) {
+export function runGate({ root, json = false, policyRef = null, head = false }) {
   /** @type {StagedFile[]} */
   let files = [];
   try {
-    files = getStaged(root);
+    if (head && !indexMatchesHead(root)) {
+      throw new Error("--head valida o último commit, mas há mudanças staged: commite-as ou remova-as do índice antes");
+    }
+    files = getStaged(root, head ? { base: headBase(root) } : {});
   } catch (error) {
     // Fail closed (item 1): an unreadable change set is never "approved".
     return finish({
       root, json, verdict: "reproved", exitCode: 1, files: [],
       findings: [{
         check: "gate", severity: "high", rule: "gate-read-error", file: "*", line: null,
-        message: `Could not read the staged change set — nothing was validated: ${errorLine(error)}`,
+        message: `Não foi possível ler as mudanças staged — nada foi validado: ${errorLine(error)}`,
       }],
     });
   }
@@ -115,7 +139,7 @@ export function runGate({ root, json = false, policyRef = null }) {
   if (files.length === 0) {
     return finish({
       root, json, verdict: "approved", exitCode: 0, findings: [], files,
-      note: "Nothing staged; the gate had no changes to validate.",
+      note: head ? "O último commit não tem mudanças para validar." : "Nada staged; o gate não tinha mudanças para validar.",
     });
   }
 
@@ -127,7 +151,7 @@ export function runGate({ root, json = false, policyRef = null }) {
       root, json, verdict: "reproved", exitCode: 1, files,
       findings: [{
         check: "gate", severity: "high", rule: "gate-policy-error", file: MANIFEST, line: null,
-        message: `Could not load the gate policy${policyRef ? ` from ${policyRef}` : ""}: ${errorLine(error)}`,
+        message: `Não foi possível carregar a política do gate${policyRef ? ` de ${policyRef}` : ""}: ${errorLine(error)}`,
       }],
     });
   }
@@ -143,7 +167,7 @@ export function runGate({ root, json = false, policyRef = null }) {
       findings.push({
         check: check.name ?? "unknown", severity: "high", rule: "check-error",
         file: "*", line: null,
-        message: `Gate check failed — treat as vulnerable until fixed: ${errorLine(error)}`,
+        message: `A checagem do gate falhou — trate como vulnerável até corrigir: ${errorLine(error)}`,
       });
     }
   }
@@ -153,7 +177,7 @@ export function runGate({ root, json = false, policyRef = null }) {
   if (config.playground.enabled) {
     try {
       const commands = manifest?.profile?.commands ?? buildProfile(root).commands;
-      const result = runPlayground({ root, settings: config.playground, commands });
+      const result = runPlayground({ root, settings: config.playground, commands, ...(head ? { baselineRef: parentCommit(root) } : {}) });
       playground = { ran: result.ran, lines: result.lines, results: result.results };
       findings.push(...result.findings);
     } catch (error) {
@@ -161,7 +185,7 @@ export function runGate({ root, json = false, policyRef = null }) {
       findings.push({
         check: "playground", severity: "medium", rule: "playground-error",
         file: "*", line: null,
-        message: `Playground could not run — set gate.playground.enabled=false to bypass: ${playground.reason}`,
+        message: `O playground não rodou — para desligá-lo, use gate.playground.enabled=false: ${playground.reason}`,
       });
     }
   }
@@ -176,7 +200,7 @@ export function runGate({ root, json = false, policyRef = null }) {
   return finish({
     root, json, verdict, exitCode, findings, files, config, playground,
     note: blocking.length > 0 && audit
-      ? "Blocking findings present but mode is 'audit' — commit allowed, record written."
+      ? "Há findings bloqueantes, mas o modo é 'audit' — commit liberado e registro gravado."
       : null,
   });
 }

@@ -146,7 +146,7 @@ test("attestation: attested HEAD pushes; a --no-verify bypassed commit does not"
   const blocked = verifyAttestation({ root: dir, json: true });
   assert.equal(blocked.ok, false);
   assert.equal(blocked.exitCode, 1);
-  assert.match(blocked.message, /BLOCKED/);
+  assert.match(blocked.message, /BLOQUEADO/);
 
   // re-staged identical content re-attests (idempotent) — System of the record
   write(dir, "src/calc.js", "// tweak\n".concat("function add(a, b) { return a + b; }\nmodule.exports = { add };\n"));

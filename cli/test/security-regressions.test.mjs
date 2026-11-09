@@ -7,6 +7,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { runGate } from "../src/gate/run.mjs";
+import { verifyAttestation } from "../src/gate/attest.mjs";
 import { parsePatch } from "../src/gate/staged.mjs";
 import { isTestPath } from "../src/gate/checks/test-path.mjs";
 import { installHook } from "../src/adapters/precommit.mjs";
@@ -187,4 +188,80 @@ test("Q1: gate --json and attest --json print machine-readable output", () => {
   assert.equal(JSON.parse(gate.stdout).verdict, "approved");
   const attest = spawnSync(process.execPath, [cli, "attest", "--verify", "--json", "--dir", dir], { encoding: "utf8" });
   assert.equal(typeof JSON.parse(attest.stdout).ok, "boolean");
+});
+
+// v0.1.3 — field report (umbrella folder with embedded repositories).
+
+function embeddedRepo(dir) {
+  const inner = path.join(dir, "inner");
+  fs.mkdirSync(inner);
+  git(inner, "init", "-q");
+  git(inner, "config", "user.email", "t@t");
+  git(inner, "config", "user.name", "t");
+  fs.writeFileSync(path.join(inner, "a"), "a\n");
+  git(inner, "add", "-A");
+  git(inner, "commit", "-qm", "inner", "--no-verify");
+}
+
+test("gitlinks (embedded repos) do not break the gate; secrets beside them are still caught", () => {
+  const dir = repo();
+  embeddedRepo(dir);
+  fs.writeFileSync(path.join(dir, "leak.js"), `const k = "${KEY}";\n`);
+  execFileSync("git", ["add", "-A"], { cwd: dir, stdio: "ignore" }); // git warns about the embedded repo
+  const run = runGate({ root: dir, json: true });
+  const rules = run.findings.map((f) => f.rule);
+  assert.ok(!rules.includes("gate-read-error"), JSON.stringify(run.findings));
+  assert.ok(rules.includes("secret-aws"));
+  assert.ok(run.findings.some((f) => f.rule === "submodule-not-scanned" && f.file === "inner" && f.severity === "low"));
+});
+
+test("git's own stderr does not leak into the gate output", () => {
+  const dir = repo();
+  embeddedRepo(dir);
+  execFileSync("git", ["add", "-A"], { cwd: dir, stdio: "ignore" });
+  const cli = fileURLToPath(new URL("../src/index.mjs", import.meta.url));
+  const out = spawnSync(process.execPath, [cli, "gate", "--dir", dir], { encoding: "utf8" });
+  assert.doesNotMatch(out.stderr, /fatal:/);
+  assert.match(out.stdout, /Veredito/);
+});
+
+test("gate --head attests a root commit made without pre-commit, unblocking the push", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-head-"));
+  git(dir, "init", "-q");
+  git(dir, "config", "user.email", "t@t");
+  git(dir, "config", "user.name", "t");
+  fs.writeFileSync(path.join(dir, ".gitignore"), ".esteira/\n");
+  fs.writeFileSync(path.join(dir, "nota.txt"), "x\n");
+  git(dir, "add", "-A");
+  git(dir, "commit", "-qm", "root", "--no-verify");
+  assert.equal(verifyAttestation({ root: dir, json: true }).ok, false);
+  const run = runGate({ root: dir, json: true, head: true });
+  assert.equal(run.verdict, "approved");
+  assert.equal(run.stats.files, 2);
+  assert.equal(verifyAttestation({ root: dir, json: true }).ok, true);
+});
+
+test("gate --head judges the last commit's content and refuses a dirty index", () => {
+  const dir = repo();
+  fs.writeFileSync(path.join(dir, "leak.js"), `const k = "${KEY}";\n`);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-qm", "leak", "--no-verify");
+  assert.equal(runGate({ root: dir, json: true, head: true }).verdict, "reproved");
+  fs.writeFileSync(path.join(dir, "other.txt"), "y\n");
+  git(dir, "add", "other.txt");
+  const dirty = runGate({ root: dir, json: true, head: true });
+  assert.equal(dirty.findings[0].rule, "gate-read-error");
+  assert.match(dirty.findings[0].message, /--head/);
+});
+
+test("human output is pt-BR", () => {
+  const cli = fileURLToPath(new URL("../src/index.mjs", import.meta.url));
+  const help = spawnSync(process.execPath, [cli, "--help"], { encoding: "utf8" }).stdout;
+  assert.match(help, /^Uso:/m);
+  const unknown = spawnSync(process.execPath, [cli, "nope"], { encoding: "utf8" }).stderr;
+  assert.match(unknown, /comando desconhecido/);
+  const dir = repo();
+  const analyze = spawnSync(process.execPath, [cli, "analyze", "--dir", dir], { encoding: "utf8" }).stdout;
+  assert.match(analyze, /análise do projeto/);
+  assert.match(analyze, /Linguagens/);
 });

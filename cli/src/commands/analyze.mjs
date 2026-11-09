@@ -4,19 +4,19 @@ import { buildProfile } from "../lib/profile.mjs";
 /** @param {Profile} profile */
 export function renderText(profile) {
   const lines = [];
-  lines.push("Esteira — project analysis");
-  lines.push(`Root        : ${profile.root}`);
-  lines.push(`Files       : ${profile.files.total}`);
+  lines.push("Esteira — análise do projeto");
+  lines.push(`Raiz        : ${profile.root}`);
+  lines.push(`Arquivos    : ${profile.files.total}`);
   lines.push(
-    `Languages   : ${profile.languages
+    `Linguagens  : ${profile.languages
       .map((l) => `${l.id}${l.packageManager ? ` (${l.packageManager})` : ""} [${l.confidence}]`)
-      .join(", ") || "none"}`
+      .join(", ") || "nenhuma"}`
   );
   const frameworks = [...new Set(profile.languages.flatMap((l) => l.frameworks))];
   if (frameworks.length) lines.push(`Frameworks  : ${frameworks.join(", ")}`);
 
   lines.push(
-    `Monorepo    : ${profile.monorepo.isMonorepo ? `yes (${profile.monorepo.tool})` : "no"}` +
+    `Monorepo    : ${profile.monorepo.isMonorepo ? `sim (${profile.monorepo.tool})` : "não"}` +
     (profile.monorepo.layout.length ? ` — ${profile.monorepo.layout.join(", ")}` : "")
   );
 
@@ -25,16 +25,16 @@ export function renderText(profile) {
     .map(([k]) => k);
   if (infraFlags.length) lines.push(`Infra       : ${infraFlags.join(", ")}`);
   if (profile.infra.ciProviders.length) {
-    lines.push(`Existing CI : ${profile.infra.ciProviders.join(", ")}`);
+    lines.push(`CI existente: ${profile.infra.ciProviders.join(", ")}`);
   }
 
-  lines.push("Commands    :");
+  lines.push("Comandos    :");
   for (const [key, value] of Object.entries(profile.commands)) {
     lines.push(`  ${key.padEnd(9)} ${value ?? "—"}`);
   }
 
   if (profile.gaps.length) {
-    lines.push("Gaps        :");
+    lines.push("Lacunas     :");
     for (const gap of profile.gaps) lines.push(`  - [${gap.id}] ${gap.message}`);
   }
 

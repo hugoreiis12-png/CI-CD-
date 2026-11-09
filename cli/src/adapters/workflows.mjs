@@ -92,7 +92,7 @@ ${installStep}      # Stage everything since the base so \`gate\` judges the who
       - name: Stage the change set against its base
         run: |
           if [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            echo "::error::No base commit to diff against (BASE_SHA='$BASE_SHA')"; exit 1
+            echo "::error::Sem commit base para comparar (BASE_SHA='$BASE_SHA')"; exit 1
           fi
           git reset --soft "$BASE_SHA"
       # Policy comes from the base commit, never from the PR being judged.

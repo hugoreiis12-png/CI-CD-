@@ -43,7 +43,7 @@ export async function runAudit({ root, json = false, fetchImpl, timeoutMs }) {
       findings = await collectCves(sbom, { fetchImpl, timeoutMs, maxDetails: config.maxDetails });
     }
   } catch (error) {
-    offlineNote = `Advisory source unreachable — audit ran offline: ${errorLine(error)}`;
+    offlineNote = `Fonte de advisories inacessível — a auditoria rodou offline: ${errorLine(error)}`;
   }
 
   /** @type {Partial<Record<AuditSeverity, number>>} */

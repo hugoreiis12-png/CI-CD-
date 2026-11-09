@@ -26,6 +26,8 @@ export interface StagedFile {
   blob: string | null;
   size: number | null;
   binary: boolean;
+  /** Gitlink to an embedded repository (mode 160000): content not scanned here. */
+  submodule: boolean;
 }
 
 export interface PatchFile {

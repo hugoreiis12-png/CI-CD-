@@ -1,6 +1,6 @@
 {
   "name": "@esteira/cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Esteira — secure adaptive CI/CD & vulnerability-audit pipeline. gh extension: gh esteira init|analyze|gate|audit",
   "type": "module",
   "bin": {

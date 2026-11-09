@@ -22,7 +22,7 @@ export function renderHook({ name, command, cli, previous }) {
   const isPush = name === "pre-push";
   const marker = isPush
     ? `if [ -f "$ROOT/.esteira/push-disabled" ]; then
-  echo "[esteira] push attestation disabled by marker (.esteira/push-disabled)." >&2
+  echo "[esteira] attestation do push desligada pelo arquivo .esteira/push-disabled." >&2
 el`
     : "";
   return `#!/usr/bin/env sh
@@ -40,9 +40,9 @@ elif command -v gh >/dev/null 2>&1 && gh extension list 2>/dev/null | grep -q ' 
 elif [ -f "$ESTEIRA_CLI" ]; then
   node "$ESTEIRA_CLI" ${command} || exit $?
 elif [ "\${ESTEIRA_ALLOW_UNGATED:-}" = "1" ]; then
-  echo "[esteira] WARNING: gate CLI not found; ESTEIRA_ALLOW_UNGATED=1 let this ${name} through." >&2
+  echo "[esteira] AVISO: CLI do gate não encontrada; ESTEIRA_ALLOW_UNGATED=1 liberou este ${name}." >&2
 else
-  echo "[esteira] gate CLI not found — ${name} blocked. Install gh-esteira, or set ESTEIRA_ALLOW_UNGATED=1 to bypass." >&2
+  echo "[esteira] CLI do gate não encontrada — ${name} bloqueado. Instale com: gh extension install hugoreiis12-png/gh-esteira (ou use ESTEIRA_ALLOW_UNGATED=1 para liberar)." >&2
   exit 1
 fi
 
@@ -109,6 +109,6 @@ export function installHook(root, { cli = SELF_CLI } = {}) {
       previousHooksPath: prev.configured, chainedHooks: prev.chain,
     };
   } catch (error) {
-    return { path: relCommit, installed: false, reason: `git config failed: ${errorLine(error)}` };
+    return { path: relCommit, installed: false, reason: `git config falhou: ${errorLine(error)}` };
   }
 }
