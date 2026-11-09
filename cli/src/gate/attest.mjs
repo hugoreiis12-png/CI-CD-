@@ -75,7 +75,7 @@ export function verifyAttestation({ root, json = false }) {
   } catch (error) {
     return result({
       root, json, ok: false, exitCode: 1,
-      message: `No HEAD tree to attest (${errorLine(error)}).`,
+      message: `Não há commit (HEAD) para atestar (${errorLine(error)}).`,
     });
   }
 
@@ -96,14 +96,14 @@ export function verifyAttestation({ root, json = false }) {
   if (match) {
     return result({
       root, json, ok: true, exitCode: 0, run: match,
-      message: `Push attested: HEAD matches validated snapshot ${runShort(match)} (${match.id}).`,
+      message: `Push atestado: o HEAD é idêntico ao snapshot validado ${runShort(match)} (${match.id}).`,
     });
   }
   return result({
     root, json, ok: false, exitCode: 1,
     message: seen
-      ? `Push BLOCKED: HEAD is not an attested snapshot. Commit went through --no-verify, or content changed after the gate. Run \`gh esteira gate\` on the commit content.`
-      : `Push BLOCKED: no attested gate runs found. Commit must pass \`gh esteira gate\` before pushing.`,
+      ? "Push BLOQUEADO: o HEAD não é um snapshot atestado (o commit foi feito com --no-verify, sem pre-commit — merge, cherry-pick, rebase — ou o conteúdo mudou depois do gate). Rode `gh esteira gate --head` para validar e atestar o último commit."
+      : "Push BLOQUEADO: nenhuma execução aprovada do gate foi encontrada. Rode `gh esteira gate --head` para validar e atestar o último commit.",
   });
 }
 
@@ -112,7 +112,7 @@ export function verifyAttestation({ root, json = false }) {
  * @param {R} r
  */
 function result(r) {
-  if (!r.json) process.stdout.write(`Esteira attest — ${r.ok ? "approved" : "blocked"}\n${r.message}\n`);
+  if (!r.json) process.stdout.write(`Esteira attest — ${r.ok ? "aprovado" : "bloqueado"}\n${r.message}\n`);
   return { ...r };
 }
 

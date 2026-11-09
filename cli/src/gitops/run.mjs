@@ -63,16 +63,16 @@ export function runGitops({ root, image: imageFlag, force = false, gitopsRepo, q
   }
 
   if (!quiet) {
-    process.stdout.write(`Esteira gitops — app: ${app} · image: ${image}\n\nManifests & workflow:\n`);
+    process.stdout.write(`Esteira gitops — app: ${app} · imagem: ${image}\n\nManifestos e workflow:\n`);
     for (const r of results) {
-      const status = r.written ? "applied" : `skipped (${r.reason ?? "unchanged"})`;
+      const status = r.written ? "aplicado" : `ignorado (${r.reason === "exists" ? "já existe" : r.reason ?? "sem mudanças"})`;
       process.stdout.write(`  - ${r.path}: ${status}\n`);
     }
     process.stdout.write(
-      "\nNext:\n" +
-      "  - gh esteira pin            (REQUIRED before committing: the gate blocks floating actions in privileged workflows)\n" +
-      "  - Replace REPLACE-ME/esteira-gitops (deploy/argocd/*.yaml) with your GitOps repo\n" +
-      "  - Wire the promotion job: CI proposes the GitOps PR; Argo CD reconciles the cluster\n",
+      "\nPróximos passos:\n" +
+      "  - gh esteira pin            (OBRIGATÓRIO antes do commit: o gate bloqueia actions sem SHA em workflows privilegiados)\n" +
+      "  - Troque REPLACE-ME/esteira-gitops (deploy/argocd/*.yaml) pelo seu repositório GitOps\n" +
+      "  - Crie o secret GITOPS_TOKEN e o environment production (veja o manual, seção 11)\n",
     );
   }
 

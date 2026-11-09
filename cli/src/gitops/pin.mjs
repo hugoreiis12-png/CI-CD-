@@ -76,7 +76,7 @@ export async function pinWorkflows({
     const original = readFile(root, rel) ?? "";
     const uses = collectUses(original);
     if (uses.length === 0) {
-      report.skipped.push({ file: rel, reason: "no pinr" });
+      report.skipped.push({ file: rel, reason: "sem linhas uses:" });
       continue;
     }
     let next = original;
@@ -93,7 +93,7 @@ export async function pinWorkflows({
         continue;
       }
       if (!/^[0-9a-f]{40}$/.test(sha)) {
-        report.unresolved.push({ file: rel, action: use.action, ref: use.ref, reason: `not a 40-char SHA: ${sha}` });
+        report.unresolved.push({ file: rel, action: use.action, ref: use.ref, reason: `não é uma SHA de 40 caracteres: ${sha}` });
         continue;
       }
       const replacement = renderPinned({
@@ -111,7 +111,7 @@ export async function pinWorkflows({
       const [line, prefix, ref] = pinnedRef;
       try {
         const sha = await resolveRef(repo, ref);
-        if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`not a 40-char SHA: ${sha}`);
+        if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`não é uma SHA de 40 caracteres: ${sha}`);
         next = next.replace(line, `${prefix}${sha} # pinned: ${ref}`);
         report.resolved.push({ file: rel, action: repo, ref, sha });
       } catch (error) {

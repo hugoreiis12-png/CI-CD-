@@ -21,37 +21,37 @@ const RULES = [
   {
     id: "dangerous-eval", severity: "medium", exts: JS,
     re: /\beval\s*\(|\bnew\s+Function\s*\(/,
-    message: "Dynamic code execution (eval / new Function)",
+    message: "Execução dinâmica de código (eval / new Function)",
   },
   {
     id: "dangerous-child-process", severity: "high", exts: JS,
     re: /child_process[.\w]*\.(?:exec|execSync)|(?:^|[^.\w])exec(?:Sync)?\s*\(/,
-    message: "Shell execution via string command (child_process.exec / exec()); prefer execFile/spawn with an argv array",
+    message: "Comando de shell montado em string (exec do child_process); prefira execFile/spawn com array de argumentos",
   },
   {
     id: "dangerous-curl-pipe", severity: "high", exts: [...SHELL, ...DOCKER],
     re: /\b(?:curl|wget)\b[^\n|;]*(?:\|\s*(?:ba|z)?sh|sh\s*<)/,
-    message: "Remote script piped straight into a shell",
+    message: "Script remoto enviado direto para um shell (curl | sh)",
   },
   {
     id: "dangerous-rm-rf", severity: "high", exts: [...SHELL, ...DOCKER, ...YAML],
     re: /\brm\s+(?:-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\w*\s+(?:[/~])/,
-    message: "Forced recursive delete on / or ~",
+    message: "Remoção recursiva forçada em / ou ~",
   },
   {
     id: "dangerous-chmod-777", severity: "medium", exts: [...SHELL, ...DOCKER, ...YAML],
     re: /\bchmod\s+(?:-[a-zA-Z]+\s+)?777\b/,
-    message: "World-writable permissions (chmod 777)",
+    message: "Permissão de escrita para todos (chmod 777)",
   },
   {
     id: "dangerous-insecure-tls", severity: "medium", exts: [...JS, ...SHELL, ...YAML, ...DOCKER],
     re: /NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*["']?0|rejectUnauthorized\s*:\s*false|GIT_SSL_NO_VERIFY\s*[:=]\s*true|\bcurl\b[^\n]*\s-k(?:\s|$)/,
-    message: "TLS verification disabled",
+    message: "Verificação de TLS desligada",
   },
   {
     id: "dangerous-sql-concat", severity: "medium", exts: JS,
     re: /(?:execute|query)\s*\(\s*["'`][^"'`]*(?:SELECT|INSERT|UPDATE|DELETE)\b[^"'`]*["'`]\s*\+/,
-    message: "SQL built by string concatenation (injection risk); use parameters",
+    message: "SQL montado por concatenação de strings (risco de injeção); use parâmetros",
   },
 ];
 

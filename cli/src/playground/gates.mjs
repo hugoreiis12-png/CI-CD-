@@ -24,9 +24,9 @@ export function evaluateSuite({ staged, baseline, settings }) {
     return {
       finding: finding(
         "playground-timeout", "high",
-        `Test suite exceeded the ${settings.timeoutMs} ms playground budget; commit blocked.`,
+        `A suíte de testes passou do limite de ${settings.timeoutMs} ms do playground; commit bloqueado.`,
       ),
-      lines: [`suite  ${staged.cmd}: TIMEOUT (>${settings.timeoutMs} ms)`],
+      lines: [`testes ${staged.cmd}: ESTOUROU O TEMPO (>${settings.timeoutMs} ms)`],
       ok: false,
     };
   }
@@ -34,16 +34,16 @@ export function evaluateSuite({ staged, baseline, settings }) {
     return {
       finding: finding(
         "playground-skipped", "low",
-        `Test command not runnable in playground (${staged.cmd}) — ensure dependencies are installed.`,
+        `O comando de teste não roda no playground (${staged.cmd}) — o snapshot não tem node_modules nem arquivos ignorados pelo git.`,
       ),
-      lines: [`suite  ${staged.cmd}: command not found (127)`],
+      lines: [`testes ${staged.cmd}: comando não encontrado (127)`],
       ok: true,
     };
   }
   if (staged.code === 0) {
     return {
       finding: null,
-      lines: [`suite  ${staged.cmd}: OK (${staged.ms} ms)`],
+      lines: [`testes ${staged.cmd}: OK (${staged.ms} ms)`],
       ok: true,
     };
   }
@@ -56,9 +56,9 @@ export function evaluateSuite({ staged, baseline, settings }) {
     return {
       finding: finding(
         "suite-failure", "high",
-        `Playground suite failed on the staged snapshot (${after} failure(s)); HEAD baseline was clean — refactor/break detected.`,
+        `Os testes falharam no snapshot staged (${after} falha(s)); no HEAD eles passavam — quebra introduzida por esta mudança.`,
       ),
-      lines: [`suite  ${staged.cmd}: FAILED after=${after} before=0 (${staged.ms} ms)`],
+      lines: [`testes ${staged.cmd}: FALHOU depois=${after} antes=0 (${staged.ms} ms)`],
       ok: false,
     };
   }
@@ -66,18 +66,18 @@ export function evaluateSuite({ staged, baseline, settings }) {
     return {
       finding: finding(
         "regression", "high",
-        `Failure count increased against the baseline: ${before} → ${after}.`,
+        `O número de falhas aumentou em relação ao HEAD: ${before} → ${after}.`,
       ),
-      lines: [`suite  ${staged.cmd}: FAILED after=${after} before=${before} (${staged.ms} ms)`],
+      lines: [`testes ${staged.cmd}: FALHOU depois=${after} antes=${before} (${staged.ms} ms)`],
       ok: false,
     };
   }
   return {
     finding: finding(
       "pre-existing-failures", "low",
-      `Failure count not worse than baseline (${before} → ${after}); record kept.`,
+      `As falhas já existiam no HEAD e não pioraram (${before} → ${after}); registro mantido.`,
     ),
-    lines: [`suite  ${staged.cmd}: FAILED (pre-existing) after=${after} before=${before}`],
+    lines: [`testes ${staged.cmd}: FALHOU (preexistente) depois=${after} antes=${before}`],
     ok: true,
   };
 }
@@ -92,16 +92,16 @@ export function evaluateTypecheck({ staged, settings }) {
     return {
       finding: finding(
         "playground-timeout", "high",
-        `Typecheck exceeded the ${settings.timeoutMs} ms playground budget.`,
+        `O typecheck passou do limite de ${settings.timeoutMs} ms do playground.`,
       ),
-      lines: [`check  ${staged.cmd}: TIMEOUT`],
+      lines: [`tipos   ${staged.cmd}: ESTOUROU O TEMPO`],
       ok: false,
     };
   }
   if (staged.code === 127) {
     return {
-      finding: finding("playground-skipped", "low", `Typecheck command not runnable (${staged.cmd}).`),
-      lines: [`check  ${staged.cmd}: command not found (127)`],
+      finding: finding("playground-skipped", "low", `O comando de typecheck não roda no playground (${staged.cmd}).`),
+      lines: [`tipos   ${staged.cmd}: comando não encontrado (127)`],
       ok: true,
     };
   }
@@ -109,11 +109,11 @@ export function evaluateTypecheck({ staged, settings }) {
     return {
       finding: finding(
         "playground-typecheck", "medium",
-        `Typecheck failed on the staged snapshot (${staged.cmd}).`,
+        `O typecheck falhou no snapshot staged (${staged.cmd}).`,
       ),
-      lines: [`check  ${staged.cmd}: FAIL (${staged.ms} ms)`],
+      lines: [`tipos   ${staged.cmd}: FALHOU (${staged.ms} ms)`],
       ok: false,
     };
   }
-  return { finding: null, lines: [`check  ${staged.cmd}: OK (${staged.ms} ms)`], ok: true };
+  return { finding: null, lines: [`tipos   ${staged.cmd}: OK (${staged.ms} ms)`], ok: true };
 }

@@ -64,14 +64,14 @@ export function buildProfile(root) {
   if (languages.length === 0) {
     gaps.push({
       id: "unknown-stack",
-      message: "No language manifest found; adapters will rely on file fingerprint only.",
+      message: "Nenhum manifesto de linguagem encontrado na raiz; se o código está numa subpasta, configure profile.commands no .esteira/project.json.",
     });
   }
   if (!commands.test) {
-    gaps.push({ id: "no-test-command", message: "No test command detected — playground gates (M3) will require one." });
+    gaps.push({ id: "no-test-command", message: "Nenhum comando de teste detectado — o playground do gate precisa de um (profile.commands.test)." });
   }
   if (!commands.lint) {
-    gaps.push({ id: "no-lint-command", message: "No lint command detected — the security gate will use built-in checks." });
+    gaps.push({ id: "no-lint-command", message: "Nenhum comando de lint detectado — o gate usa só as checagens embutidas." });
   }
 
   return {

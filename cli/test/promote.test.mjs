@@ -54,8 +54,8 @@ test("runPromote: already-current is a no-op; missing tag/repo/env fail loudly",
   const again = await runPromote(opts);
   assert.equal(again.already, true);
   await assert.rejects(() => runPromote({ ...opts, tag: undefined }), /--tag/);
-  await assert.rejects(() => runPromote({ ...opts, repo: undefined }), /No GitOps repository/);
-  await assert.rejects(() => runPromote({ ...opts, env: "prod" }), /staging or production/);
+  await assert.rejects(() => runPromote({ ...opts, repo: undefined }), /Repositório GitOps desconhecido/);
+  await assert.rejects(() => runPromote({ ...opts, env: "prod" }), /staging ou production/);
 });
 
 test("runPromote: dry-run never touches git or gh", async () => {

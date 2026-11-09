@@ -19,7 +19,7 @@ It analyzes the project's stack and architecture, wires an adaptive CI/CD pipeli
 Requirements: `gh` (authenticated), `git`, Node.js ≥ 20.
 
 ```bash
-gh extension install hugoreiis12-png/gh-esteira --pin v0.1.2
+gh extension install hugoreiis12-png/gh-esteira --pin v0.1.3
 gh esteira --version
 ```
 

@@ -2,7 +2,9 @@
 
 A Esteira é uma extensão do GitHub CLI que coloca um pipeline de CI/CD com foco em segurança em qualquer projeto, com um comando. Este manual cobre o uso do dia a dia: instalar, ligar num projeto, commitar e abrir PRs com o gate ativo, configurar a política e entender o que fazer quando algo for bloqueado.
 
-> Versão documentada: **v0.1.2**. Repositório: `https://github.com/hugoreiis12-png/gh-esteira`.
+> Os blocos de comando deste manual não têm comentários (`#`): no zsh interativo, `#` não é comentário a menos que você rode `setopt interactivecomments`. Copie e cole um bloco por vez.
+
+> Versão documentada: **v0.1.3**. Repositório: `https://github.com/hugoreiis12-png/gh-esteira`.
 
 ---
 
@@ -40,9 +42,11 @@ A Esteira é uma extensão do GitHub CLI que coloca um pipeline de CI/CD com foc
 ## 3. Instalação
 
 ```bash
-gh extension install hugoreiis12-png/gh-esteira --pin v0.1.2
-gh esteira --version        # → 0.1.2
+gh extension install hugoreiis12-png/gh-esteira --pin v0.1.3
+gh esteira --version
 ```
+
+O segundo comando deve imprimir `0.1.3`.
 
 `--pin` fixa a versão (tag) instalada. Sem ele, o `gh` instala o que estiver na branch `main`.
 
@@ -67,10 +71,14 @@ Se você instalou sem `--pin`, `gh extension upgrade esteira` traz a `main` mais
 
 ```bash
 cd meu-projeto
-gh esteira analyze          # só lê: mostra stack, comandos e lacunas detectados
-gh esteira init --dry-run   # mostra o que seria criado, sem escrever nada
-gh esteira init             # aplica
+gh esteira analyze
+gh esteira init --dry-run
+gh esteira init
 ```
+
+O `analyze` só lê e mostra a stack, os comandos e as lacunas detectados. O `init --dry-run` mostra o que seria criado, sem gravar nada. O `init` aplica.
+
+> Rode a Esteira **dentro do repositório git de cada projeto**. Se a pasta tiver outros repositórios git dentro dela, o git os registra como gitlinks (repositórios embutidos). O gate não lê o conteúdo deles e avisa com `submodule-not-scanned`.
 
 O `init` cria:
 
@@ -98,9 +106,11 @@ O playground do gate roda o seu comando de **teste** numa cópia isolada. Confir
 ### 4.3 Fixar as actions por SHA
 
 ```bash
-gh esteira pin --dry-run    # mostra o que seria fixado
-gh esteira pin              # reescreve uses: X@v4 → X@<sha40> # pinned: v4, e ESTEIRA_REF → <sha>
+gh esteira pin --dry-run
+gh esteira pin
 ```
+
+O `--dry-run` mostra o que seria fixado. Sem ele, o `pin` reescreve `uses: X@v4` para `X@<sha40> # pinned: v4` e o `ESTEIRA_REF` para a SHA do commit.
 
 Rode o `pin` sempre que gerar ou editar os workflows da Esteira. O gate **bloqueia** actions com tag mutável em workflows que têm permissões de escrita ou segredos (veja a seção 7).
 
@@ -109,11 +119,13 @@ Rode o `pin` sempre que gerar ou editar os workflows da Esteira. O gate **bloque
 ```bash
 git switch -c esteira/setup
 git add .esteira/project.json .github/workflows/esteira-ci.yml .gitignore
-git commit -m "ci: liga a esteira"          # o pre-commit roda o gate e o playground
-git push -u origin esteira/setup             # o pre-push verifica a attestation
+git commit -m "ci: liga a esteira"
+git push -u origin esteira/setup
 gh pr create --fill
-gh pr checks --watch                         # validate + security-gate
+gh pr checks --watch
 ```
+
+No `commit`, o pre-commit roda o gate e o playground. No `push`, o pre-push verifica a attestation. O `gh pr checks --watch` acompanha o `validate` e o `security-gate`.
 
 ### 4.5 Configurar o GitHub (uma vez por repositório)
 
@@ -144,18 +156,18 @@ No **primeiro** PR, o `security-gate` usa a política da `main`, que ainda não 
 | Você faz | A Esteira faz | Se bloquear |
 |---|---|---|
 | `git commit` | `gate`: checagens estáticas + playground (seus testes no staged e no HEAD) | Corrija os findings, faça `git add` e commit de novo |
-| `git push` | `attest --verify`: o HEAD tem de ser idêntico a um snapshot aprovado | Rode `gh esteira gate` sobre o conteúdo commitado (ver 9) |
+| `git push` | `attest --verify`: o HEAD tem de ser idêntico a um snapshot aprovado | `gh esteira gate --head` valida e atesta o último commit (ver 9) |
 | Abrir/atualizar PR | `validate` + `security-gate` no servidor | Veja o log do job (`gh pr checks`, `gh run view --log-failed`) |
-| `gh esteira audit` | CVEs das dependências via OSV.dev | Atualize o pacote para a versão indicada em `fix:` |
+| `gh esteira audit` | CVEs das dependências via OSV.dev | Atualize o pacote para a versão indicada em `correção:` |
 | `gh esteira report` | Exporta gate + audit no formato `findings.json` da skill da Cloudflare | — |
 
 Um gate aprovado mostra:
 
 ```text
-Esteira gate — approved
-Changes     : 2 files, +146/-0
-Playground  : suite  npm --prefix cli test: OK (3487 ms)
-Verdict     : commit may proceed. Attestation 42001f897883… recorded (push-gated).
+Esteira gate — aprovado
+Mudanças    : 2 arquivo(s), +146/-0
+Playground  : testes npm --prefix cli test: OK (3487 ms)
+Veredito    : commit liberado. Attestation 42001f897883… registrada (libera o push).
 ```
 
 ---
@@ -168,11 +180,11 @@ Todos aceitam `--dir <path>` (o padrão é o diretório atual).
 |---|---|---|
 | `gh esteira analyze` | Detecta linguagens, gerenciadores, frameworks, infra e comandos. Só lê. | `--json` |
 | `gh esteira init` | Cria manifesto, workflow de CI e hooks. Idempotente. | `--dry-run`, `--force` (regenera o workflow) |
-| `gh esteira gate` | Roda o gate sobre o que está **staged** | `--json`, `--policy-ref <commit>` (usado no CI: lê a política desse commit) |
+| `gh esteira gate` | Roda o gate sobre o que está **staged** | `--json`, `--head` (valida e atesta o último commit), `--policy-ref <commit>` (usado no CI: lê a política desse commit) |
 | `gh esteira attest --verify` | Confere se o HEAD é um snapshot aprovado | `--json` |
 | `gh esteira audit` | Gera um SBOM e consulta o OSV.dev; grava `.esteira/audits/latest.json` | `--json` |
 | `gh esteira gitops` | Gera `deploy/k8s` (base + staging/production), Argo CD e `esteira-release.yml` | `--image <ref>`, `--gitops-repo owner/repo`, `--force` |
-| `gh esteira pin` | Fixa por SHA todo `uses:` e o `ESTEIRA_REF` nos workflows da Esteira | `--dry-run` |
+| `gh esteira pin` | Fixa por SHA todo `uses:` e o `ESTEIRA_REF` nos workflows da Esteira | `--dry-run`, `--json` |
 | `gh esteira promote` | Abre um PR no repositório GitOps trocando o `newTag` do overlay | `--tag <sha>` (obrigatório), `--env staging\|production`, `--repo owner/repo`, `--app`, `--dry-run` |
 | `gh esteira report` | `findings.json` no contrato da skill da Cloudflare, validado antes de gravar | `--out <path>`, `--json` |
 
@@ -199,6 +211,7 @@ O padrão é `blockAt: "medium"`: findings `medium` e `high` bloqueiam, `low` s�
 | `ci-floating-action-privileged` | medium | `uses: x@v4` num workflow com escrita ou segredos | `gh esteira pin` |
 | `ci-floating-action` | low | `uses: x@v4` num workflow sem privilégios | `gh esteira pin` (recomendado) |
 | `large-file` | low | Blob maior que `maxFileBytes` (5 MiB) | Use Git LFS ou armazenamento externo |
+| `submodule-not-scanned` | low | Repositório git embutido (gitlink): o conteúdo dele não é validado | Rode a Esteira dentro dele, ou remova-o com `git rm --cached <pasta>` |
 | `suite-failure`, `regression` | high | Seus testes falham no staged, ou falham mais que no HEAD | Corrija o código ou os testes |
 | `pre-existing-failures` | low | Os testes já falhavam no HEAD e não pioraram | Não bloqueia; corrija quando puder |
 | `playground-typecheck` | medium | O comando de typecheck falhou no snapshot | Corrija os tipos (ou tire o typecheck do profile se ele precisar de `node_modules`) |
@@ -250,22 +263,25 @@ O padrão é `blockAt: "medium"`: findings `medium` e `high` bloqueiam, `low` s�
 | Pular hooks | `git commit/push --no-verify` | Nenhum: por isso o check é obrigatório |
 | Adoção gradual | `"mode": "audit"` | Só vale depois do merge na base |
 
-**Push bloqueado ("HEAD is not an attested snapshot")** significa que o commit não passou pelo gate (foi feito com `--no-verify`, ou o conteúdo mudou depois). Para resolver:
+**"Push BLOQUEADO: o HEAD não é um snapshot atestado"** significa que o último commit não passou pelo gate. Isso acontece com commits feitos com `--no-verify`, com commits que não disparam o pre-commit (merge, cherry-pick, rebase) e quando o conteúdo mudou depois do gate. Para resolver, valide e ateste o último commit:
 
 ```bash
-git reset --soft HEAD~1 && gh esteira gate && git commit -C ORIG_HEAD
+gh esteira gate --head
+git push
 ```
+
+O `--head` compara o último commit com o pai dele (ou com a árvore vazia, se for o primeiro commit do repositório) e exige o índice limpo. Se houver mudanças staged, commite-as ou remova-as do índice antes.
 
 ---
 
 ## 10. Auditoria de CVEs e relatório
 
 ```bash
-gh esteira audit                 # npm (lockfile), Python, Go, Rust → OSV.dev
-gh esteira report                # .esteira/reports/findings.json
+gh esteira audit
+gh esteira report
 ```
 
-O `audit` mostra, para cada advisory, `pacote@versão`, severidade, resumo e a correção (`fix: upgrade X to >= Y`). Se o OSV.dev estiver fora do ar, o audit roda offline: sai com 0 e uma nota avisando.
+O `audit` lê os manifestos de npm (com lockfile), Python, Go e Rust e consulta o OSV.dev. Para cada advisory, mostra `pacote@versão`, severidade, resumo e a correção (`correção: atualize X para >= Y`). O `report` grava `.esteira/reports/findings.json`. Se o OSV.dev estiver fora do ar, o audit roda offline: sai com 0 e uma nota avisando.
 
 O `report` segue o contrato da [skill de security-audit da Cloudflare](https://github.com/cloudflare/security-audit-skill):
 
@@ -278,9 +294,11 @@ O `report` segue o contrato da [skill de security-audit da Cloudflare](https://g
 ## 11. Deploy com GitOps (projetos com Dockerfile e Kubernetes)
 
 ```bash
-gh esteira gitops --gitops-repo OWNER/gitops-repo   # deploy/k8s, deploy/argocd, esteira-release.yml
-gh esteira pin                                      # OBRIGATÓRIO antes de commitar o release
+gh esteira gitops --gitops-repo OWNER/gitops-repo
+gh esteira pin
 ```
+
+O `gitops` gera `deploy/k8s`, `deploy/argocd` e `esteira-release.yml`. O `pin` é **obrigatório** antes de commitar o release.
 
 O `esteira-release.yml` gerado faz isto:
 
@@ -303,7 +321,10 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
-| `gate CLI not found — pre-commit blocked` | A extensão não está instalada nesta máquina | Instale (seção 3); os hooks passam a encontrar `gh esteira` sozinhos |
+| `CLI do gate não encontrada — pre-commit bloqueado` | A extensão não está instalada nesta máquina | Instale (seção 3); os hooks passam a encontrar `gh esteira` sozinhos |
+| `gate-read-error` com `git cat-file` (até a v0.1.2) | Repositório git embutido na pasta (gitlink) | Atualize para a v0.1.3; o gitlink vira o aviso `submodule-not-scanned` |
+| `zsh: command not found: #` ou `pathspec '#'` | Comentário colado junto com o comando no zsh | Cole só o comando, ou rode `setopt interactivecomments` |
+| Push bloqueado logo no primeiro commit | O commit foi feito sem o pre-commit | `gh esteira gate --head` |
 | `extension name must start with gh-` | Nome de repositório errado no `gh extension install` | Use `hugoreiis12-png/gh-esteira` (seção 3) |
 | `playground-skipped` | Nenhum comando de teste | Preencha `profile.commands.test` |
 | Typecheck falha só no playground | O snapshot não tem `node_modules` | Tire o `typecheck` do profile e deixe-o no job `validate` |
@@ -315,9 +336,11 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 
 ---
 
-## 13. Limitações conhecidas (v0.1.2)
+## 13. Limitações conhecidas (v0.1.3)
 
 - **Regras estáticas são heurísticas:** batem em texto, inclusive dentro de strings e comentários. Se um falso positivo aparecer, reescreva o trecho. Não existe allowlist por linha.
 - **Subpastas:** o `analyze` não detecta stacks em subpastas. Configure `profile.commands` à mão.
+- **Repositórios embutidos:** pastas que são outros repositórios git (gitlinks) não são validadas pelo gate do repositório externo. Rode a Esteira em cada um deles.
+- **Idioma:** as mensagens da CLI estão em PT-BR. IDs de regra, chaves de JSON e os textos vindos do OSV.dev (resumo do advisory) continuam em inglês.
 - **Attestations são locais:** `.esteira/runs/*.json` é um registro local, não assinado. A garantia vem do `security-gate` obrigatório no CI.
 - **Smoke test e assinatura:** não há smoke test pós-deploy, e as imagens não são assinadas (só SBOM e provenance).

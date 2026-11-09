@@ -15,17 +15,18 @@ import { evaluateSuite, evaluateTypecheck } from "./gates.mjs";
  * Nothing in the developer's working tree or the real repository is touched.
  */
 /**
- * @param {{ root: string, settings?: Partial<PlaygroundSettings>, commands: Commands }} input
+ * @param {{ root: string, settings?: Partial<PlaygroundSettings>, commands: Commands, baselineRef?: string | null }} input
+ *   baselineRef: commit to compare against (default HEAD; null = no baseline)
  * @returns {{ ran: true, findings: Finding[], lines: string[], results: object[], stagedSha: string, headSha: string | null }}
  */
-export function runPlayground({ root, settings, commands }) {
+export function runPlayground({ root, settings, commands, baselineRef }) {
   const configured = {
     timeoutMs: settings?.timeoutMs ?? 120_000,
     baseline: settings?.baseline !== false,
   };
 
   const stagedSha = stageCommit(root);
-  const headSha = configured.baseline ? headCommit(root) : null;
+  const headSha = configured.baseline ? (baselineRef === undefined ? headCommit(root) : baselineRef) : null;
 
   const stagedDir = makeTempPlayground();
   const baselineDir = headSha ? makeTempPlayground() : null;
@@ -37,7 +38,7 @@ export function runPlayground({ root, settings, commands }) {
 
     /** @type {Finding[]} */
     const findings = [];
-    const lines = [`staged ${stagedSha.slice(0, 10)}`, `HEAD   ${headSha ? headSha.slice(0, 10) : "(none)"}`];
+    const lines = [`staged ${stagedSha.slice(0, 10)}`, `base   ${headSha ? headSha.slice(0, 10) : "(nenhuma)"}`];
     const results = [];
 
     if (commands.test) {
@@ -56,9 +57,9 @@ export function runPlayground({ root, settings, commands }) {
       findings.push({
         check: "playground", rule: "playground-skipped", severity: "low",
         file: "*", line: null,
-        message: "No test command detected — suite gate skipped. Run `gh esteira init` again or add a test script.",
+        message: "Nenhum comando de teste configurado — testes pulados. Defina profile.commands.test no .esteira/project.json.",
       });
-      lines.push("suite  skipped (no test command)");
+      lines.push("testes pulados (nenhum comando de teste)");
     }
 
     if (commands.typecheck) {

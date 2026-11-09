@@ -13,33 +13,33 @@ const PLACEHOLDER =
 const RULES = [
   {
     id: "secret-aws", severity: "high", re: /AKIA[0-9A-Z]{16}/,
-    message: "AWS Access Key ID",
+    message: "Chave de acesso AWS (Access Key ID)",
   },
   {
     id: "secret-github", severity: "high", re: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
-    message: "GitHub token",
+    message: "Token do GitHub",
   },
   {
     id: "secret-npm", severity: "high", re: /\bnpm_[A-Za-z0-9]{36}\b/,
-    message: "npm publish token",
+    message: "Token de publicação do npm",
   },
   {
     id: "secret-google", severity: "high", re: /\bAIza[0-9A-Za-z_-]{35}\b/,
-    message: "Google API key",
+    message: "Chave de API do Google",
   },
   {
     id: "secret-slack", severity: "high", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
-    message: "Slack token",
+    message: "Token do Slack",
   },
   {
     id: "secret-private-key", severity: "high",
     re: /-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/,
-    message: "Private key material",
+    message: "Material de chave privada",
   },
   {
     id: "secret-hardcoded-credential", severity: "high",
     re: /(?:api[_-]?key|secret|token|password)\s*["']?\s*[:=]\s*["'][^"'\s]{12,}["']/i,
-    message: "Hardcoded credential-looking assignment (use a secret manager / env var)",
+    message: "Atribuição com cara de credencial fixa no código (use um secret manager ou variável de ambiente)",
   },
 ];
 

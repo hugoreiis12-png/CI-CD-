@@ -47,53 +47,53 @@ function gateRecord(group) {
   const where = `${first.file}:${lines.join(",")}`;
   const base = {
     fingerprint: fingerprintOf(`esteira-gate:${first.rule}`, first.file),
-    title: `${first.rule} in ${first.file}`,
+    title: `${first.rule} em ${first.file}`,
     description: `${first.message} (Esteira gate, ${meta.attackClass}).`,
     trace: [{ kind: "sink", file: first.file, line: lines[0], scope: first.rule, description: first.message }],
-    evidence: lines.map((line) => ({ file: first.file, line, description: `Rule ${first.rule} matched this line in the staged change.` })),
+    evidence: lines.map((line) => ({ file: first.file, line, description: `A regra ${first.rule} bateu nesta linha da mudança staged.` })),
   };
   if (meta.verdict === "confirmed") {
     return {
       verdict: "confirmed", ...base,
       root_cause: meta.rootCause,
       intended_behavior: meta.intended,
-      conditions: [{ kind: "authorization_role", description: "Read access to the repository, a fork or a clone once the change is pushed." }],
+      conditions: [{ kind: "authorization_role", description: "Acesso de leitura ao repositório, a um fork ou a um clone depois que a mudança for enviada." }],
       execution: {
-        attacker_perspective: "Any principal with read access to the repository history.",
+        attacker_perspective: "Qualquer pessoa com acesso de leitura ao histórico do repositório.",
         payloads: ["gh esteira gate"],
-        instructions: ["Stage the change and run `gh esteira gate` in the repository root.", `Observe the ${first.rule} finding at ${where}.`],
-        observed_result: `The gate matched ${first.rule} at ${where}; the matched value is not reproduced in this report.`,
+        instructions: ["Coloque a mudança em stage e rode `gh esteira gate` na raiz do repositório.", `Observe o finding ${first.rule} em ${where}.`],
+        observed_result: `O gate encontrou ${first.rule} em ${where}; o valor encontrado não é reproduzido neste relatório.`,
       },
       remediation: { strategy: meta.fix },
       severity: {
-        likelihood: { score: "high", reason: "Repository contents are copied to every clone, fork and CI runner." },
-        impact: { score: "high", reason: "A leaked credential grants whatever the issuing system allows until it is revoked." },
+        likelihood: { score: "high", reason: "O conteúdo do repositório é copiado para todo clone, fork e runner de CI." },
+        impact: { score: "high", reason: "Uma credencial vazada dá todo o acesso que o sistema emissor permite, até ser revogada." },
         overall_severity: "high",
       },
-      confidence: { score: "medium", reason: "Pattern-matched credential format; whether it is still live is an owner-side fact." },
+      confidence: { score: "medium", reason: "Formato de credencial reconhecido por padrão; se ela ainda está ativa é um fato do lado do dono." },
     };
   }
   return {
     verdict: "needs_validation", ...base,
     claimed_root_cause: meta.rootCause,
-    blockers: [meta.blocker ?? "A static match does not establish the boundary result."],
+    blockers: [meta.blocker ?? "Uma coincidência estática não prova o resultado no limite de confiança."],
     validation_plan: { local: meta.plan ?? meta.fix },
   };
 }
 
 /** @param {AuditFinding} f */
 function auditRecord(f) {
-  const fix = f.fixed.length ? `upgrade ${f.package} to >= ${f.fixed[f.fixed.length - 1]}` : `review ${f.id} for a supported resolution`;
+  const fix = f.fixed.length ? `atualize ${f.package} para >= ${f.fixed[f.fixed.length - 1]}` : `veja em ${f.id} a resolução suportada`;
   return {
     verdict: "needs_validation",
     fingerprint: fingerprintOf("osv", `${f.id}\u0000${f.ecosystem}/${f.package}`),
-    title: `${f.id} in ${f.ecosystem}/${f.package}@${f.version}`,
-    description: `${f.summary} (OSV.dev advisory; ${fix}).`,
-    claimed_root_cause: `${f.package}@${f.version} is in a version range affected by ${f.id}.`,
-    trace: [{ kind: "sink", file: f.source, line: 1, scope: `${f.ecosystem}/${f.package}`, description: `Dependency declared in ${f.source}.` }],
-    evidence: [{ file: f.source, line: 1, description: `${f.package}@${f.version} matched ${f.id} (severity label: ${f.severity}).` }],
-    blockers: ["A version match does not establish that this project reaches the vulnerable code path (skill: a known-vulnerable dependency is not a finding by itself)."],
-    validation_plan: { local: `Find the call sites of ${f.package} that use the affected API; then ${fix} and run the test suite.` },
+    title: `${f.id} em ${f.ecosystem}/${f.package}@${f.version}`,
+    description: `${f.summary} (advisory do OSV.dev; ${fix}).`,
+    claimed_root_cause: `${f.package}@${f.version} está numa faixa de versões afetada por ${f.id}.`,
+    trace: [{ kind: "sink", file: f.source, line: 1, scope: `${f.ecosystem}/${f.package}`, description: `Dependência declarada em ${f.source}.` }],
+    evidence: [{ file: f.source, line: 1, description: `${f.package}@${f.version} bateu com ${f.id} (rótulo de severidade: ${f.severity}).` }],
+    blockers: ["Coincidir a versão não prova que este projeto chega ao trecho vulnerável (skill: dependência com vulnerabilidade conhecida não é, sozinha, um finding)."],
+    validation_plan: { local: `Encontre onde ${f.package} usa a API afetada; depois ${fix} e rode a suíte de testes.` },
   };
 }
 
@@ -148,7 +148,7 @@ export function runReport({ root, out = ".esteira/reports/findings.json", json =
     audit: readJson(root, ".esteira/audits/latest.json"),
   });
   if (errors.length > 0) {
-    process.stderr.write(`Esteira report — output failed the Cloudflare findings contract:\n${errors.map((e) => `  ${e}`).join("\n")}\n`);
+    process.stderr.write(`Esteira report — a saída não passou no contrato de findings da Cloudflare:\n${errors.map((e) => `  ${e}`).join("\n")}\n`);
     return { exitCode: 1, records: [], errors };
   }
   writeFile(root, out, `${JSON.stringify(records, null, 2)}\n`);
@@ -158,10 +158,10 @@ export function runReport({ root, out = ".esteira/reports/findings.json", json =
   if (json) process.stdout.write(`${JSON.stringify(records, null, 2)}\n`);
   else {
     process.stdout.write(
-      `Esteira report — Cloudflare security-audit findings contract\n` +
-      `Records     : ${records.length} (${Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(", ") || "none"})\n` +
-      (skipped.length ? `Skipped     : ${skipped.length} (unmapped rule or unsafe path): ${skipped.join("; ")}\n` : "") +
-      `Written     : ${out} (validated with vendor/cloudflare-security-audit)\n`,
+      `Esteira report — contrato de findings da skill de security-audit da Cloudflare\n` +
+      `Registros   : ${records.length} (${Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(", ") || "nenhum"})\n` +
+      (skipped.length ? `Ignorados   : ${skipped.length} (regra sem mapeamento ou caminho inseguro): ${skipped.join("; ")}\n` : "") +
+      `Gravado     : ${out} (validado com vendor/cloudflare-security-audit)\n`,
     );
   }
   return { exitCode: 0, records, errors };
