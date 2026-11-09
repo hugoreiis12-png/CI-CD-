@@ -1,3 +1,5 @@
+import { isTestPath } from "./test-path.mjs";
+
 // Placeholder/dead values that should not be treated as leaked credentials.
 // Boundaries are explicit so substrings like "EXAMPLE" inside a real key do not
 // cause a false exemption (anchored word-ish edges).
@@ -43,12 +45,15 @@ export function checkSecrets(ctx) {
     for (let i = 0; i < file.added.length; i++) {
       const line = file.added[i];
       for (const rule of RULES) {
-        if (!rule.re.test(line)) continue;
-        if (PLACEHOLDER.test(line)) continue;
-        if (/(?:test|spec|fixture)/i.test(file.path) && rule.id !== "secret-private-key") continue;
+        const match = line.match(rule.re);
+        if (!match) continue;
+        // S3: judge the matched credential, not the line — a "// todo" comment
+        // next to a real key must not exempt it.
+        if (PLACEHOLDER.test(match[0])) continue;
+        if (isTestPath(file.path) && rule.id !== "secret-private-key") continue;
         findings.push({
           check: "secrets", severity: rule.severity, rule: rule.id,
-          file: file.path, line: i + 1, message: rule.message,
+          file: file.path, line: file.addedLines?.[i] ?? i + 1, message: rule.message,
         });
       }
     }

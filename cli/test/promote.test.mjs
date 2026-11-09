@@ -43,6 +43,7 @@ test("runPromote: edits overlay, commits, pushes and opens a PR (offline)", asyn
   assert.match(fs.readFileSync(file, "utf8"), /newTag: deadbeefcafe1234/);
   assert.ok(calls.some((c) => c.includes("push -u origin esteira/promote-mysvc-staging-deadbeefca")));
   assert.ok(calls.some((c) => c.startsWith("gh pr create --repo acme/gitops")));
+  assert.ok(calls.some((c) => c.startsWith("gh repo clone acme/gitops")), "clones via gh, not git clone owner/name");
   assert.ok(fs.existsSync(clone), "caller-provided clone is not deleted");
 });
 

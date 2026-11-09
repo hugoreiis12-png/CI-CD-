@@ -67,13 +67,34 @@ jobs:
     steps:
 ${steps.join("\n")}
 
+  # Authoritative gate (S1/S5): local hooks and .esteira/runs records can be
+  # bypassed (--no-verify) or forged, so the same gate runs here on the change
+  # set. Make this job a required status check in branch protection.
   security-gate:
-    # TODO(M2): pre-commit security gate + playground matrix.
     runs-on: ubuntu-latest
+    env:
+      ESTEIRA_EXT: REPLACE-ME/gh-esteira # repo that publishes the gh-esteira extension
+      BASE_SHA: ${"${{ github.event.pull_request.base.sha || github.event.before }}"}
     steps:
       - uses: actions/checkout@v4
-      - name: Gate placeholder
-        run: echo "Esteira security gate placeholder (M2)"
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Esteira
+        env:
+          GH_TOKEN: ${"${{ github.token }}"}
+        run: gh extension install "$ESTEIRA_EXT"
+      # Stage everything since the base so \`gate\` judges the whole change set.
+      - name: Stage the change set against its base
+        run: |
+          if [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error::No base commit to diff against (BASE_SHA='$BASE_SHA')"; exit 1
+          fi
+          git reset --soft "$BASE_SHA"
+      - name: Esteira gate (server-side)
+        run: gh esteira gate
 `;
 }
 

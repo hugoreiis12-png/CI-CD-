@@ -45,7 +45,8 @@ export async function runPromote({
   const cloneDir = cloneTarget ?? fs.mkdtempSync(path.join(os.tmpdir(), "esteira-promote-"));
   const ownsClone = !cloneTarget;
   try {
-    await execImpl("git", ["clone", "--depth", "1", opts.repo, cloneDir]);
+    // owner/name is not a git URL; gh resolves it (and its auth) to the real remote.
+    await ghImpl(["repo", "clone", opts.repo, cloneDir, "--", "--depth", "1"]);
 
     const kustomizationRel = path.join("apps", opts.app, "overlays", opts.env, "kustomization.yaml");
     const kustomizationPath = path.join(cloneDir, kustomizationRel);

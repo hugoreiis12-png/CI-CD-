@@ -10,6 +10,8 @@ const hasExt = (path, exts) => {
   return exts.includes(ext);
 };
 
+import { isTestPath } from "./test-path.mjs";
+
 const RULES = [
   {
     id: "dangerous-eval", severity: "medium", exts: JS,
@@ -56,10 +58,10 @@ export function checkDangerousPatterns(ctx) {
       for (const rule of RULES) {
         if (!hasExt(file.path, rule.exts)) continue;
         if (!rule.re.test(line)) continue;
-        if (/(?:test|spec|fixture)/i.test(file.path)) continue;
+        if (isTestPath(file.path)) continue;
         findings.push({
           check: "patterns", severity: rule.severity, rule: rule.id,
-          file: file.path, line: i + 1, message: rule.message,
+          file: file.path, line: file.addedLines?.[i] ?? i + 1, message: rule.message,
         });
       }
     }
