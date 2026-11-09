@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "tool": "@esteira/cli",
   "adaptersVersion": 1,
-  "generatedAt": "2026-11-09T19:34:00.695Z",
+  "generatedAt": "2026-11-09T19:43:34.595Z",
   "profile": {
     "schemaVersion": 1,
     "root": "C:\\Users\\JFC\\Desktop\\CICD\\gh-esteira",
-    "generatedAt": "2026-11-09T19:34:00.693Z",
+    "generatedAt": "2026-11-09T19:43:34.594Z",
     "files": {
-      "total": 74,
+      "total": 75,
       "signatures": {
-        ".mjs": 61,
+        ".mjs": 62,
         ".json": 4,
         ".md": 2,
         ".yml": 1,

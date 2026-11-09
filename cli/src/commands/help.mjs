@@ -33,6 +33,20 @@ export const COMMANDS = {
     examples: ["gh esteira init --dry-run", "gh esteira init", "gh esteira init --global"],
     notes: "Os hooks rodam a esteira no commit, merge e push (bloqueiam) e no pull/rebase (avisam). No projeto, cria .esteira/project.json e esteira-ci.yml (commite os dois) e os hooks em .esteira/hooks. Rodar de novo regera o profile e preserva a política. Desligar num repositório: git config esteira.enabled false.",
   },
+  update: {
+    summary: "Reajusta a esteira no projeto: re-análise, re-aplica hooks/workflow/.gitignore e re-pina actions. Idempotente.",
+    usage: "gh esteira update [--dry-run] [--force] [--json] [--dir <pasta>]",
+    flags: [
+      ["--dry-run", "mostra o que seria feito, sem gravar nada"],
+      ["--force", "regenera o .github/workflows/esteira-ci.yml mesmo que ele já exista"],
+      ["--json", "saída em JSON"],
+      ["--dir <pasta>", "projeto alvo (padrão: pasta atual)"],
+    ],
+    examples: ["gh esteira update --dry-run", "gh esteira update"],
+    notes:
+      "Rode sempre que a stack mudar (nova linguagem, novo package manager, novo comando de teste) ou após atualizar a extensão. " +
+      "Preserva a política que você editou em .esteira/project.json (gate/audit/llm). O pin refixa as actions por SHA.",
+  },
   analyze: {
     summary: "Detecta linguagens, gerenciador de pacotes, frameworks, infraestrutura e comandos. Só lê.",
     usage: "gh esteira analyze [--json] [--dir <pasta>]",

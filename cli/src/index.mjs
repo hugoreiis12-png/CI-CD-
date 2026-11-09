@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAnalyze } from "./commands/analyze.mjs";
 import { runInit } from "./commands/init.mjs";
+import { runUpdate } from "./commands/update.mjs";
 import { runGate } from "./gate/run.mjs";
 import { verifyAttestation } from "./gate/attest.mjs";
 import { runAudit } from "./audit/run.mjs";
@@ -138,6 +139,15 @@ async function main() {
       }
       runInit({ root: flags.dir, dryRun: flags.dryRun, force: flags.force });
       break;
+    case "update": {
+      const resolveRef = await makeGhResolver();
+      const out = await runUpdate({
+        root: flags.dir, dryRun: flags.dryRun, force: flags.force, quiet: flags.quiet, json: flags.json,
+        existsFile: exists, readFile, writeFile, resolveRef,
+      });
+      if (out.pinReport.unresolved.length > 0) process.exitCode = 1;
+      break;
+    }
     case "hook": {
       const stdin = process.stdin.isTTY ? "" : fs.readFileSync(0, "utf8");
       process.exitCode = await runHook(positional[1] ?? "", { root: flags.dir, args: positional.slice(2), stdin });
