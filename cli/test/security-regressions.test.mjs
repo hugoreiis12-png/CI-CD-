@@ -265,3 +265,10 @@ test("human output is pt-BR", () => {
   assert.match(analyze, /análise do projeto/);
   assert.match(analyze, /Linguagens/);
 });
+
+test("hooks prefer the gh-managed extension over a gh-esteira found on PATH", () => {
+  const dir = repo();
+  installHook(dir, { cli: "/nonexistent" });
+  const hook = fs.readFileSync(path.join(dir, ".esteira/hooks/pre-commit"), "utf8");
+  assert.ok(hook.indexOf("gh extension list") < hook.indexOf("command -v gh-esteira"), "gh extension must be tried first");
+});
