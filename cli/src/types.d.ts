@@ -69,6 +69,8 @@ export interface CommandResult {
   code: number | "timeout" | "error";
   ms: number;
   stdout: string;
+  /** Error count of the whole output (typecheck/lint reports). */
+  errors?: number;
 }
 
 export interface PlaygroundOutcome {

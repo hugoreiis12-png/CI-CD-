@@ -84,10 +84,12 @@ export function evaluateSuite({ staged, baseline, settings }) {
 
 /** Type-semantics gate against the staged snapshot (no baseline needed). */
 /**
- * @param {{ staged: CommandResult, settings: { timeoutMs: number } }} input
+ * @param {{ staged: CommandResult, baseline?: CommandResult | null, settings: { timeoutMs: number } }} input
+ *   Like the suite gate: errors that already exist in the baseline do not
+ *   block; only a change that adds type errors does.
  * @returns {{ ok: boolean, finding: Finding | null, lines: string[] }}
  */
-export function evaluateTypecheck({ staged, settings }) {
+export function evaluateTypecheck({ staged, baseline = null, settings }) {
   if (staged.code === "timeout") {
     return {
       finding: finding(
@@ -106,12 +108,27 @@ export function evaluateTypecheck({ staged, settings }) {
     };
   }
   if (staged.code !== 0) {
+    const after = staged.errors ?? 0;
+    const baselineFailed = baseline && baseline.code !== 0 && baseline.code !== 127 && baseline.code !== "timeout";
+    const before = baselineFailed ? baseline.errors ?? 0 : 0;
+    if (baselineFailed && after <= before) {
+      return {
+        finding: finding(
+          "pre-existing-type-errors", "low",
+          `O typecheck já falhava na base e esta mudança não piorou (${before} → ${after} erro(s)); não bloqueia, mas vale corrigir.`,
+        ),
+        lines: [`tipos   ${staged.cmd}: FALHOU (preexistente) depois=${after} antes=${before} (${staged.ms} ms)`],
+        ok: true,
+      };
+    }
     return {
       finding: finding(
         "playground-typecheck", "medium",
-        `O typecheck falhou no snapshot staged (${staged.cmd}).`,
+        baselineFailed
+          ? `Esta mudança aumentou os erros de tipo: ${before} → ${after} (${staged.cmd}).`
+          : `O typecheck falhou no snapshot staged${baseline ? " e passava na base" : ""} (${after} erro(s), ${staged.cmd}).`,
       ),
-      lines: [`tipos   ${staged.cmd}: FALHOU (${staged.ms} ms)`],
+      lines: [`tipos   ${staged.cmd}: FALHOU depois=${after} antes=${baselineFailed ? before : 0} (${staged.ms} ms)`],
       ok: false,
     };
   }
