@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "tool": "@esteira/cli",
+  "adaptersVersion": 1,
+  "generatedAt": "2026-11-09T01:04:54.340Z",
+  "profile": {
+    "schemaVersion": 1,
+    "root": "/Users/hugo/Desktop/CI:CD ",
+    "generatedAt": "2026-11-09T01:04:54.339Z",
+    "files": {
+      "total": 58,
+      "signatures": {
+        ".mjs": 48,
+        ".json": 4,
+        ".gitignore": 1,
+        ".md": 1,
+        "package-lock.json": 1,
+        "package.json": 1,
+        ".ts": 1,
+        "tsconfig.json": 1,
+        "__no_ext__": 1,
+        ".sh": 1,
+        ".log": 1
+      }
+    },
+    "languages": [],
+    "monorepo": {
+      "isMonorepo": false,
+      "tool": null,
+      "layout": []
+    },
+    "infra": {
+      "containers": false,
+      "kubernetes": false,
+      "helm": false,
+      "terraform": false,
+      "ansible": false,
+      "argocd": false,
+      "ciProviders": [],
+      "hasPipelines": false
+    },
+    "commands": {
+      "test": "npm --prefix cli test",
+      "typecheck": null,
+      "lint": null,
+      "build": null
+    },
+    "gaps": [
+      {
+        "id": "unknown-stack",
+        "message": "No language manifest found; adapters will rely on file fingerprint only."
+      },
+      {
+        "id": "no-test-command",
+        "message": "No test command detected — playground gates (M3) will require one."
+      },
+      {
+        "id": "no-lint-command",
+        "message": "No lint command detected — the security gate will use built-in checks."
+      }
+    ],
+    "warnings": []
+  },
+  "gate": {
+    "mode": "block",
+    "blockAt": "medium",
+    "maxFileBytes": 5242880,
+    "playground": {
+      "enabled": true,
+      "baseline": true,
+      "timeoutMs": 120000
+    },
+    "push": {
+      "requireAttestation": true
+    },
+    "gates": []
+  },
+  "audit": {
+    "sources": [
+      "local",
+      "github"
+    ],
+    "schedule": "daily",
+    "failOn": "high"
+  }
+}
