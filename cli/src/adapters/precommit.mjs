@@ -12,7 +12,9 @@ const SELF_CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const shq = (/** @type {string} */ value) => `'${String(value).replace(/'/g, "'\\''")}'`;
 
 /**
- * Hook body. Fails closed when no gate runner exists (S6): an explicit
+ * Hook body. Prefers the gh-managed (version-pinned) extension over any
+ * `gh-esteira` on PATH, so a dev link cannot silently replace the gate.
+ * Fails closed when no gate runner exists (S6): an explicit
  * ESTEIRA_ALLOW_UNGATED=1 is the only way through, and it is printed.
  * Chains the hooks that were active before init (S7); pre-push forwards
  * the ref list git sends on stdin.
@@ -33,10 +35,10 @@ cd "$ROOT"
 ESTEIRA_CLI=${shq(cli)}
 ESTEIRA_PREV_HOOKS=${shq(previous ?? "")}
 ${isPush ? 'INPUT="$(cat)"\n' : ""}
-${marker}if command -v gh-esteira >/dev/null 2>&1; then
-  gh-esteira ${command} || exit $?
-elif command -v gh >/dev/null 2>&1 && gh extension list 2>/dev/null | grep -q ' esteira'; then
+${marker}if command -v gh >/dev/null 2>&1 && gh extension list 2>/dev/null | grep -q '^gh esteira'; then
   gh esteira ${command} || exit $?
+elif command -v gh-esteira >/dev/null 2>&1; then
+  gh-esteira ${command} || exit $?
 elif [ -f "$ESTEIRA_CLI" ]; then
   node "$ESTEIRA_CLI" ${command} || exit $?
 elif [ "\${ESTEIRA_ALLOW_UNGATED:-}" = "1" ]; then
