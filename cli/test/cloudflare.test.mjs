@@ -88,9 +88,9 @@ test("gate: a staged workflow with expression injection is reproved", () => {
 });
 
 test("catalog: every rule the checks can emit is mapped to a skill attack class", async () => {
-  const sources = ["secrets", "patterns", "workflows"].map((n) =>
+  const sources = ["secrets", "sensitive", "patterns", "workflows"].map((n) =>
     fs.readFileSync(new URL(`../src/gate/checks/${n}.mjs`, import.meta.url), "utf8")).join("\n");
-  const emitted = new Set([...sources.matchAll(/["'](secret-[a-z-]+|dangerous-[a-z0-9-]+|ci-[a-z-]+)["']/g)].map((m) => m[1]));
+  const emitted = new Set([...sources.matchAll(/["'](secret-[a-z-]+|sensitive-[a-z-]+|gitignore-[a-z-]+|dangerous-[a-z0-9-]+|ci-[a-z-]+)["']/g)].map((m) => m[1]));
   for (const rule of emitted) assert.ok(CATALOG[rule], `rule ${rule} has no catalog entry`);
   for (const meta of Object.values(CATALOG)) assert.match(meta.attackClass, /^[A-Z-]+\.md#.+/);
 });

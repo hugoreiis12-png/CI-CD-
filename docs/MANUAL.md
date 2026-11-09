@@ -4,20 +4,28 @@ A Esteira é uma extensão do GitHub CLI que coloca um pipeline de CI/CD com foc
 
 > Os blocos de comando deste manual não têm comentários (`#`): no zsh interativo, `#` não é comentário a menos que você rode `setopt interactivecomments`. Copie e cole um bloco por vez.
 
-> Versão documentada: **v0.1.3**. Repositório: `https://github.com/hugoreiis12-png/gh-esteira`.
+> Versão documentada: **v0.2.0**. Repositório: `https://github.com/hugoreiis12-png/gh-esteira`.
 
 ---
 
 ## 1. Como funciona, em uma página
 
-```text
- você ─ git commit ─▶ pre-commit ─▶ gh esteira gate
-                       │   checagens estáticas (segredos, padrões perigosos, workflows de CI, arquivos grandes)
-                       │   playground: roda seus testes numa cópia isolada (staged × HEAD)
-                       └─ aprovado → grava uma attestation (SHA do conteúdo validado)
+Você usa o git normalmente. A esteira roda sozinha em cada comando:
 
- você ─ git push ───▶ pre-push ──▶ gh esteira attest --verify
-                       └─ só sobe se o HEAD for idêntico a um snapshot aprovado
+```text
+ git commit / git merge ─▶ pre-commit / pre-merge-commit            (BLOQUEIA)
+                            │ segredos, arquivos sensíveis (.env, chaves), .gitignore,
+                            │ padrões perigosos, workflows de CI, arquivos grandes
+                            │ playground: seus testes numa cópia isolada (com node_modules/.venv do projeto)
+                            └ aprovado → grava uma attestation (SHA do conteúdo validado)
+
+ git push ─────────────▶ pre-push                                  (BLOQUEIA)
+                            │ valida CADA commit que ainda não está no remoto
+                            │ (inclusive os feitos com --no-verify) e roda os testes no último
+                            └ aprovado → atesta e libera o push
+
+ git pull / rebase ────▶ post-merge / post-rewrite                 (AVISA)
+                            └ analisa os commits que chegaram; roda o audit de CVEs se as dependências mudaram
 
  PR no GitHub ─────▶ esteira-ci.yml
                        ├─ validate       (seus lint/typecheck/test/build)
@@ -68,6 +76,16 @@ Se você instalou sem `--pin`, `gh extension upgrade esteira` traz a `main` mais
 ## 4. Primeiros passos num projeto
 
 ### 4.1 Ligar a Esteira
+
+**Recomendado: uma vez por máquina.** Liga a esteira em todo repositório git deste computador, sem precisar de `init` em cada projeto:
+
+```bash
+gh esteira init --global
+```
+
+Ele grava hooks em `~/.config/esteira/hooks` e aponta o `git config --global core.hooksPath` para lá. Os hooks que o repositório já tinha em `.git/hooks` continuam rodando depois da esteira. Repositórios com `core.hooksPath` local (husky, ou `gh esteira init`) usam os próprios hooks. Para desligar num repositório: `git config esteira.enabled false`. Para remover: `gh esteira init --global --uninstall`, que restaura o `hooksPath` anterior.
+
+**Por projeto**, para gerar também o manifesto e o workflow de CI que o GitHub vai rodar:
 
 ```bash
 cd meu-projeto
@@ -155,8 +173,9 @@ No **primeiro** PR, o `security-gate` usa a política da `main`, que ainda não 
 
 | Você faz | A Esteira faz | Se bloquear |
 |---|---|---|
-| `git commit` | `gate`: checagens estáticas + playground (seus testes no staged e no HEAD) | Corrija os findings, faça `git add` e commit de novo |
-| `git push` | `attest --verify`: o HEAD tem de ser idêntico a um snapshot aprovado | `gh esteira gate --head` valida e atesta o último commit (ver 9) |
+| `git commit` / `git merge` | `gate`: checagens estáticas + playground (seus testes no staged e no HEAD) | Corrija os findings, faça `git add` e commit de novo |
+| `git push` | Valida cada commit novo (inclusive `--no-verify`), roda os testes no último e atesta | Corrija o commit apontado em `[commit abc1234]` (por exemplo, com `git rebase -i`) |
+| `git pull` / `git pull --rebase` | Analisa os commits que chegaram e roda o audit se as dependências mudaram | Não bloqueia; trate os avisos (`ATENÇÃO`) |
 | Abrir/atualizar PR | `validate` + `security-gate` no servidor | Veja o log do job (`gh pr checks`, `gh run view --log-failed`) |
 | `gh esteira audit` | CVEs das dependências via OSV.dev | Atualize o pacote para a versão indicada em `correção:` |
 | `gh esteira report` | Exporta gate + audit no formato `findings.json` da skill da Cloudflare | — |
@@ -178,6 +197,8 @@ Todos aceitam `--dir <path>` (o padrão é o diretório atual). No terminal, `gh
 
 | Comando | O que faz | Flags |
 |---|---|---|
+| `gh esteira init --global` | Liga a esteira em todo repositório da máquina (hooks globais) | `--uninstall` |
+| `gh esteira hook <nome>` | Uso interno: o que os hooks de git chamam | — |
 | `gh esteira help` | Ajuda em PT-BR: lista de comandos, detalhe de um comando ou o manual completo | `help <comando>`, `help manual` |
 | `gh esteira analyze` | Detecta linguagens, gerenciadores, frameworks, infra e comandos. Só lê. Se a raiz não tem manifesto, lista os projetos das subpastas | `--json` |
 | `gh esteira init` | Cria manifesto, workflow de CI e hooks. Idempotente. | `--dry-run`, `--force` (regenera o workflow) |
@@ -201,6 +222,9 @@ O padrão é `blockAt: "medium"`: findings `medium` e `high` bloqueiam, `low` s�
 |---|---|---|---|
 | `secret-aws`, `secret-github`, `secret-npm`, `secret-google`, `secret-slack` | high | Token reconhecível numa linha adicionada | **Revogue e rotacione** o token, remova-o e leia de uma variável de ambiente ou secret do CI |
 | `secret-private-key` | high | Chave privada (vale até em caminhos de teste) | Remova e rotacione a chave |
+| `sensitive-file` | high | Arquivo que por natureza guarda segredos: `.env`, `.env.local`, `*.env`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `id_rsa`, `credentials.json`, `kubeconfig`, `terraform.tfstate`… (`.env.example` não conta) | `git rm --cached <arquivo>`, coloque no `.gitignore` e, se já foi enviado, **rotacione os segredos** |
+| `secret-env-assignment` | high | `CHAVE=valor` num `.env` com nome de segredo (`SECRET`, `TOKEN`, `PASSWORD`, `API_KEY`…). Nomes públicos (`VITE_*`, `NEXT_PUBLIC_*`, `*PUBLISHABLE*`) e valores vazios ou de exemplo ficam de fora | Tire o valor do git; deixe só o nome no `.env.example` |
+| `gitignore-unprotects-secrets` | high | A mudança no `.gitignore` faz `.env`, chaves ou credenciais deixarem de ser ignorados (conferido com `git check-ignore`) | Restaure a regra (ex.: `.env`, `.env.*`, `!.env.example`) |
 | `secret-hardcoded-credential` | high | `password/token/secret/api_key = "…"` com 12+ caracteres | Use um secret manager; placeholders como `<your-key>`, `changeme` ou `xxxx` não disparam |
 | `dangerous-child-process` | high | `exec()` com comando montado em string | `execFile`/`spawn` com argv |
 | `dangerous-curl-pipe` | high | `curl … \| sh` em shell ou Dockerfile | Baixe, verifique o checksum e só então execute |
@@ -261,7 +285,8 @@ O padrão é `blockAt: "medium"`: findings `medium` e `high` bloqueiam, `low` s�
 |---|---|---|
 | A CLI da Esteira não está instalada | `ESTEIRA_ALLOW_UNGATED=1 git commit …` (fica registrado no terminal) | Nenhum: o `security-gate` continua rodando |
 | Precisa dar push de um commit não atestado | `touch .esteira/push-disabled` (arquivo ignorado pelo git; remova depois) | Nenhum |
-| Pular hooks | `git commit/push --no-verify` | Nenhum: por isso o check é obrigatório |
+| Pular hooks | `git commit --no-verify` (o pre-push ainda valida esse commit); `git push --no-verify` | Nenhum: por isso o check é obrigatório |
+| Desligar num repositório | `git config esteira.enabled false` | Nenhum |
 | Adoção gradual | `"mode": "audit"` | Só vale depois do merge na base |
 
 **"Push BLOQUEADO: o HEAD não é um snapshot atestado"** significa que o último commit não passou pelo gate. Isso acontece com commits feitos com `--no-verify`, com commits que não disparam o pre-commit (merge, cherry-pick, rebase) e quando o conteúdo mudou depois do gate. Para resolver, valide e ateste o último commit:
@@ -325,7 +350,9 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 | `CLI do gate não encontrada — pre-commit bloqueado` | A extensão não está instalada nesta máquina | Instale (seção 3); os hooks passam a encontrar `gh esteira` sozinhos |
 | `gate-read-error` com `git cat-file` (até a v0.1.2) | Repositório git embutido na pasta (gitlink) | Atualize para a v0.1.3; o gitlink vira o aviso `submodule-not-scanned` |
 | `zsh: command not found: #` ou `pathspec '#'` | Comentário colado junto com o comando no zsh | Cole só o comando, ou rode `setopt interactivecomments` |
-| Push bloqueado logo no primeiro commit | O commit foi feito sem o pre-commit | `gh esteira gate --head` |
+| Push bloqueado logo no primeiro commit | O commit foi feito sem o pre-commit (até a v0.1.3) | Na v0.2.0 o próprio pre-push valida e atesta; na anterior, `gh esteira gate --head` |
+| Commitei sem ser barrado | A esteira não estava ligada naquele repositório (nenhum hook instalado) | `gh esteira init --global` liga em todos de uma vez; confira com `git config core.hooksPath` |
+| Um `.env` (ou chave) já foi enviado ao GitHub | O segredo está público no histórico | **Rotacione o segredo primeiro.** Depois remova do índice (`git rm --cached .env`) e, se quiser limpar o histórico, use `git filter-repo` e force-push (combine com o time) |
 | `extension name must start with gh-` | Nome de repositório errado no `gh extension install` | Use `hugoreiis12-png/gh-esteira` (seção 3) |
 | `analyze` mostra `Linguagens: nenhuma` | Não há manifesto (`package.json`, `pyproject.toml`, `go.mod`…) na raiz; o código está em subpastas | Veja a seção `Subprojetos` do `analyze`: rode a esteira dentro de cada repositório, ou configure `profile.commands` se for um monorepo |
 | Projeto Bun aparece como `npm` (até a v0.1.2) | O detector só conhecia o lockfile antigo `bun.lockb` | Atualize para a v0.1.3, que reconhece também o `bun.lock` |
@@ -339,7 +366,7 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 
 ---
 
-## 13. Limitações conhecidas (v0.1.3)
+## 13. Limitações conhecidas (v0.2.0)
 
 - **Regras estáticas são heurísticas:** batem em texto, inclusive dentro de strings e comentários. Se um falso positivo aparecer, reescreva o trecho. Não existe allowlist por linha.
 - **Subpastas:** o `analyze` não detecta stacks em subpastas. Configure `profile.commands` à mão.

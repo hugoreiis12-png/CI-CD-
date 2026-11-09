@@ -52,6 +52,18 @@ export const CATALOG = {
   "secret-google": SECRET,
   "secret-slack": SECRET,
   "secret-private-key": SECRET,
+  "sensitive-file": {
+    ...SECRET,
+    rootCause: "Um arquivo que por natureza guarda segredos (.env, chave privada, keystore, credenciais) foi commitado.",
+  },
+  "secret-env-assignment": SECRET,
+  "gitignore-unprotects-secrets": {
+    ...SECRET,
+    verdict: "needs_validation",
+    rootCause: "Uma regra do .gitignore que protegia arquivos de segredo foi removida; o próximo `git add .` passa a incluí-los.",
+    blocker: "A regra removida por si só não expõe nada; a exposição acontece quando um arquivo de segredo for adicionado.",
+    plan: "Rode `git check-ignore -v .env` e confira que o arquivo volta a ser ignorado depois de restaurar a regra.",
+  },
   "secret-hardcoded-credential": {
     ...SECRET,
     verdict: "needs_validation",

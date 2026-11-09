@@ -22,14 +22,16 @@ const MANUAL_URL = "https://github.com/hugoreiis12-png/gh-esteira/blob/main/docs
 export const COMMANDS = {
   init: {
     summary: "Liga a esteira no projeto: manifesto, workflow de CI e hooks de git.",
-    usage: "gh esteira init [--dry-run] [--force] [--dir <pasta>]",
+    usage: "gh esteira init [--dry-run] [--force] [--dir <pasta>]  |  gh esteira init --global [--uninstall]",
     flags: [
+      ["--global", "liga a esteira em TODO repositório desta máquina (git config --global core.hooksPath)"],
+      ["--uninstall", "com --global: remove os hooks globais e restaura o hooksPath anterior"],
       ["--dry-run", "mostra o que seria criado, sem gravar nada"],
       ["--force", "regenera o .github/workflows/esteira-ci.yml mesmo que ele já exista"],
       ["--dir <pasta>", "projeto alvo (padrão: pasta atual)"],
     ],
-    examples: ["gh esteira init --dry-run", "gh esteira init"],
-    notes: "Cria .esteira/project.json e esteira-ci.yml (commite os dois) e os hooks em .esteira/hooks (locais, ignorados pelo git). Rodar de novo regera o profile e preserva a política (gate/audit).",
+    examples: ["gh esteira init --dry-run", "gh esteira init", "gh esteira init --global"],
+    notes: "Os hooks rodam a esteira no commit, merge e push (bloqueiam) e no pull/rebase (avisam). No projeto, cria .esteira/project.json e esteira-ci.yml (commite os dois) e os hooks em .esteira/hooks. Rodar de novo regera o profile e preserva a política. Desligar num repositório: git config esteira.enabled false.",
   },
   analyze: {
     summary: "Detecta linguagens, gerenciador de pacotes, frameworks, infraestrutura e comandos. Só lê.",
@@ -98,6 +100,13 @@ export const COMMANDS = {
       ["--dry-run", "mostra o plano sem clonar nem abrir PR"],
     ],
     examples: ["gh esteira promote --tag 1a2b3c4 --repo minha-org/gitops --dry-run"],
+  },
+  hook: {
+    summary: "Uso interno: é o que os hooks de git chamam (pre-commit, pre-merge-commit, pre-push, post-merge, post-rewrite).",
+    usage: "gh esteira hook <nome> [argumentos do git]",
+    flags: [],
+    examples: ["gh esteira hook pre-commit"],
+    notes: "Você não precisa rodar isto: o git chama sozinho. pre-commit/pre-merge-commit rodam o gate; pre-push valida cada commit novo e roda os testes; post-merge/post-rewrite analisam o que chegou no pull/rebase e rodam o audit se as dependências mudaram.",
   },
   help: {
     summary: "Mostra esta ajuda, o detalhe de um comando ou o manual completo.",

@@ -2,7 +2,7 @@
 /** @typedef {import("../types.js").Finding} Finding */
 /** @typedef {import("../types.js").PlaygroundSettings} PlaygroundSettings */
 import fs from "node:fs";
-import { stageCommit, headCommit, extractCommit, makeTempPlayground } from "./workspace.mjs";
+import { stageCommit, headCommit, extractCommit, makeTempPlayground, linkDependencies } from "./workspace.mjs";
 import { runCommand } from "./runner.mjs";
 import { evaluateSuite, evaluateTypecheck } from "./gates.mjs";
 
@@ -15,17 +15,18 @@ import { evaluateSuite, evaluateTypecheck } from "./gates.mjs";
  * Nothing in the developer's working tree or the real repository is touched.
  */
 /**
- * @param {{ root: string, settings?: Partial<PlaygroundSettings>, commands: Commands, baselineRef?: string | null }} input
+ * @param {{ root: string, settings?: Partial<PlaygroundSettings>, commands: Commands, baselineRef?: string | null, stagedRef?: string }} input
  *   baselineRef: commit to compare against (default HEAD; null = no baseline)
+ *   stagedRef:   commit to judge instead of the index (pre-push / commit ranges)
  * @returns {{ ran: true, findings: Finding[], lines: string[], results: object[], stagedSha: string, headSha: string | null }}
  */
-export function runPlayground({ root, settings, commands, baselineRef }) {
+export function runPlayground({ root, settings, commands, baselineRef, stagedRef }) {
   const configured = {
     timeoutMs: settings?.timeoutMs ?? 120_000,
     baseline: settings?.baseline !== false,
   };
 
-  const stagedSha = stageCommit(root);
+  const stagedSha = stagedRef ?? stageCommit(root);
   const headSha = configured.baseline ? (baselineRef === undefined ? headCommit(root) : baselineRef) : null;
 
   const stagedDir = makeTempPlayground();
@@ -35,10 +36,13 @@ export function runPlayground({ root, settings, commands, baselineRef }) {
   try {
     extractCommit(root, stagedSha, stagedDir);
     if (baselineDir && headSha) extractCommit(root, headSha, baselineDir);
+    const linked = linkDependencies(root, stagedDir);
+    if (baselineDir) linkDependencies(root, baselineDir);
 
     /** @type {Finding[]} */
     const findings = [];
     const lines = [`staged ${stagedSha.slice(0, 10)}`, `base   ${headSha ? headSha.slice(0, 10) : "(nenhuma)"}`];
+    if (linked.length) lines.push(`deps   reaproveitadas do projeto: ${linked.join(", ")}`);
     const results = [];
 
     if (commands.test) {

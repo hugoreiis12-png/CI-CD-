@@ -30,8 +30,8 @@ export function headBase(root) {
 
 // Content diffs ignore repo-controlled .gitattributes (`-diff`, textconv,
 // external drivers) so a PR cannot hide added lines from the checks (item 3).
-const DIFF = ["diff", "--cached", "--no-renames", "--no-ext-diff"];
-const TEXT_DIFF = [...DIFF, "--text", "--no-textconv", "-U0"];
+const DIFF_FLAGS = ["--no-renames", "--no-ext-diff"];
+const TEXT_FLAGS = ["--text", "--no-textconv", "-U0"];
 
 // `:(literal)` stops git from reading the path as a glob or pathspec magic.
 const literal = (/** @type {string} */ path) => `:(literal)${path}`;
@@ -53,7 +53,7 @@ export function parsePatch(text) {
   for (const line of text.split("\n")) {
     if (line.startsWith("diff --git")) {
       const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-      current = { path: match?.[2] ?? match?.[1] ?? "unknown", added: [], addedLines: [] };
+      current = { path: match?.[2] ?? match?.[1] ?? "unknown", added: [], addedLines: [], removed: [] };
       files.push(current);
       inHunk = false;
     } else if (current && line.startsWith("@@")) {
@@ -62,8 +62,10 @@ export function parsePatch(text) {
     } else if (current && inHunk && line.startsWith("+")) {
       current.added.push(line.slice(1));
       current.addedLines.push(next++);
+    } else if (current && inHunk && line.startsWith("-")) {
+      current.removed.push(line.slice(1));
     }
-    // "-" lines, file headers and "Binary files…" are ignored.
+    // File headers and "Binary files…" are ignored.
   }
   return files;
 }
@@ -92,23 +94,33 @@ export function parseNumstatZ(text) {
  */
 /**
  * @param {string} root
- * @param {{ base?: string }} [options] compare the index with this commit/tree instead of HEAD
+ * @param {{ base?: string, target?: string }} [options]
+ *   base:   compare against this commit/tree instead of HEAD
+ *   target: compare two commits (base → target) instead of the index
  * @returns {StagedFile[]}
  */
-export function getStaged(root, { base } = {}) {
-  const against = base ? [base] : [];
+export function getStaged(root, { base, target } = {}) {
+  // index vs HEAD (default) | index vs base | base vs target (commit range)
+  const diff = target
+    ? ["diff", ...DIFF_FLAGS, base ?? headBase(root), target]
+    : ["diff", "--cached", ...DIFF_FLAGS, ...(base ? [base] : [])];
   /** @type {StagedFile[]} */
   const files = [];
-  for (const { ins, del, path } of parseNumstatZ(run(root, [...DIFF, "--numstat", "-z", ...against]))) {
-    const entry = run(root, ["ls-files", "-s", "-z", "--", literal(path)]).split("\0")[0];
-    const [mode, sha] = entry ? entry.split(/\s+/) : [];
+  for (const { ins, del, path } of parseNumstatZ(run(root, [...diff, "--numstat", "-z"]))) {
+    // `ls-files -s`: "mode sha stage\tpath"; `ls-tree`: "mode type sha\tpath"
+    const entry = target
+      ? run(root, ["ls-tree", "-z", target, "--", path]).split("\0")[0]
+      : run(root, ["ls-files", "-s", "-z", "--", literal(path)]).split("\0")[0];
+    const fields = entry ? entry.split("\t")[0].split(/\s+/) : [];
+    const mode = fields[0];
+    const sha = target ? fields[2] : fields[1];
     const submodule = mode === GITLINK;
     const blob = sha && !submodule ? sha : null; // null for deletions and gitlinks
     const size = blob ? Number.parseInt(run(root, ["cat-file", "-s", blob]).trim(), 10) : null;
 
     // Diff each file by its exact path instead of re-parsing paths out of one
     // big patch header (items 3 and 4).
-    const [parsed] = submodule ? [] : parsePatch(run(root, [...TEXT_DIFF, ...against, "--", literal(path)]));
+    const [parsed] = submodule ? [] : parsePatch(run(root, [...diff, ...TEXT_FLAGS, "--", literal(path)]));
 
     files.push({
       path,
@@ -116,6 +128,7 @@ export function getStaged(root, { base } = {}) {
       deletions: del === "-" ? null : Number.parseInt(del, 10) || 0,
       added: parsed?.added ?? [],
       addedLines: parsed?.addedLines ?? [],
+      removed: parsed?.removed ?? [],
       blob,
       size,
       binary: ins === "-" || del === "-",

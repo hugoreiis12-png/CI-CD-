@@ -23,6 +23,8 @@ export interface StagedFile {
   deletions: number | null;
   added: string[];
   addedLines: number[];
+  /** Lines removed from the file (used by the .gitignore rule). */
+  removed: string[];
   blob: string | null;
   size: number | null;
   binary: boolean;
@@ -34,6 +36,7 @@ export interface PatchFile {
   path: string;
   added: string[];
   addedLines: number[];
+  removed: string[];
 }
 
 export interface PlaygroundSettings {
