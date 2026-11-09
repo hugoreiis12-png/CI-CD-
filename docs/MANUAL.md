@@ -4,7 +4,7 @@ A Esteira é uma extensão do GitHub CLI que coloca um pipeline de CI/CD com foc
 
 > Os blocos de comando deste manual não têm comentários (`#`): no zsh interativo, `#` não é comentário a menos que você rode `setopt interactivecomments`. Copie e cole um bloco por vez.
 
-> Versão documentada: **v0.2.0**. Repositório: `https://github.com/hugoreiis12-png/gh-esteira`.
+> Versão documentada: **v0.2.1**. Repositório: `https://github.com/hugoreiis12-png/gh-esteira`.
 
 ---
 
@@ -239,7 +239,8 @@ O padrão é `blockAt: "medium"`: findings `medium` e `high` bloqueiam, `low` s�
 | `submodule-not-scanned` | low | Repositório git embutido (gitlink): o conteúdo dele não é validado | Rode a Esteira dentro dele, ou remova-o com `git rm --cached <pasta>` |
 | `suite-failure`, `regression` | high | Seus testes falham no staged, ou falham mais que no HEAD | Corrija o código ou os testes |
 | `pre-existing-failures` | low | Os testes já falhavam no HEAD e não pioraram | Não bloqueia; corrija quando puder |
-| `playground-typecheck` | medium | O comando de typecheck falhou no snapshot | Corrija os tipos (ou tire o typecheck do profile se ele precisar de `node_modules`) |
+| `playground-typecheck` | medium | O typecheck falhou no snapshot e passava na base, ou a mudança **aumentou** o número de erros de tipo | Corrija os erros que a mudança introduziu |
+| `pre-existing-type-errors` | low | O typecheck já falhava na base e a mudança não piorou (mesmo número de erros ou menos) | Não bloqueia; corrija quando puder |
 | `playground-timeout` | high | Os testes passaram de `timeoutMs` | Acelere a suíte ou aumente o `timeoutMs` |
 | `playground-skipped` | low | Nenhum comando de teste configurado | Preencha `profile.commands.test` (4.2) |
 | `gate-read-error` | high | Não foi possível ler o diff staged; nada foi validado | Veja a mensagem; um diff de um único arquivo acima de 64 MiB também cai aqui |
@@ -357,7 +358,7 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 | `analyze` mostra `Linguagens: nenhuma` | Não há manifesto (`package.json`, `pyproject.toml`, `go.mod`…) na raiz; o código está em subpastas | Veja a seção `Subprojetos` do `analyze`: rode a esteira dentro de cada repositório, ou configure `profile.commands` se for um monorepo |
 | Projeto Bun aparece como `npm` (até a v0.1.2) | O detector só conhecia o lockfile antigo `bun.lockb` | Atualize para a v0.1.3, que reconhece também o `bun.lock` |
 | `playground-skipped` | Nenhum comando de teste | Preencha `profile.commands.test` |
-| Typecheck falha só no playground | O snapshot não tem `node_modules` | Tire o `typecheck` do profile e deixe-o no job `validate` |
+| Commit bloqueado por `playground-typecheck` sem mexer em tipos (até a v0.2.0) | O projeto já tinha erros de tipo, e o gate não comparava com a base | Atualize para a v0.2.1: erros preexistentes viram o aviso `pre-existing-type-errors` |
 | `security-gate` pula os testes no 1º PR | A `main` ainda não tem o manifesto | Normal: a partir do merge, os testes rodam |
 | O PR não pode ser mergeado | Check obrigatório falhou, ou a branch está desatualizada (`strict`) | `gh run view --log-failed`; atualize a branch com a `main` |
 | Commit do release bloqueado (`ci-floating-action-privileged`) | Actions não fixadas no `esteira-release.yml` | `gh esteira pin` |
@@ -366,7 +367,7 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 
 ---
 
-## 13. Limitações conhecidas (v0.2.0)
+## 13. Limitações conhecidas (v0.2.1)
 
 - **Regras estáticas são heurísticas:** batem em texto, inclusive dentro de strings e comentários. Se um falso positivo aparecer, reescreva o trecho. Não existe allowlist por linha.
 - **Subpastas:** o `analyze` não detecta stacks em subpastas. Configure `profile.commands` à mão.
