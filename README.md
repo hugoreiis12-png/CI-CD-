@@ -14,10 +14,12 @@ It analyzes the project's stack and architecture, wires an adaptive CI/CD pipeli
 
 ## Install
 
+> **End-user manual (pt-BR): [docs/MANUAL.md](docs/MANUAL.md)** — install, daily flow, rules and fixes, configuration, GitOps, troubleshooting.
+
 Requirements: `gh` (authenticated), `git`, Node.js ≥ 20. The extension is hosted in this repository (`hugoreiis12-png/CI-CD-`). `gh extension install owner/repo` only accepts repositories named `gh-*`, so install from a local clone pinned to a release tag:
 
 ```bash
-git clone --depth 1 --branch v0.1.0 https://github.com/hugoreiis12-png/CI-CD-.git ~/.local/share/esteira/gh-esteira
+git clone --depth 1 --branch v0.1.1 https://github.com/hugoreiis12-png/CI-CD-.git ~/.local/share/esteira/gh-esteira
 cd ~/.local/share/esteira/gh-esteira && gh extension install .
 gh esteira --version
 ```

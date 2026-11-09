@@ -107,11 +107,13 @@ async function main() {
       break;
     case "gate": {
       const run = runGate({ root: flags.dir, json: flags.json, policyRef: flags.policyRef });
+      if (flags.json) process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
       process.exitCode = run.exitCode;
       break;
     }
     case "attest": {
       const check = verifyAttestation({ root: flags.dir, json: flags.json });
+      if (flags.json) process.stdout.write(`${JSON.stringify(check, null, 2)}\n`);
       process.exitCode = check.exitCode;
       break;
     }
