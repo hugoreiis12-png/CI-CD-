@@ -69,7 +69,7 @@ test("keys, keystores and credentials files are blocked by name", () => {
 function withRemote() {
   const dir = repo();
   const remote = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-remote-"));
-  git(remote, "init", "-q", "--bare");
+  git(remote, "init", "-q", "--bare", "-b", "main"); // runner default may be master
   git(dir, "remote", "add", "origin", remote);
   git(dir, "push", "-q", "origin", "main", "--no-verify");
   return dir;
