@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ESTEIRA_REPO: hugoreiis12-png/CI-CD-
-      ESTEIRA_REF: b18c78b3b4810fd3b0402e73fe5516d595f8b78a # pinned: v0.1.0
+      ESTEIRA_REF: f68a1ceaa44c7f7e3ac93099797d554d10717ef9 # pinned: v0.1.1
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # pinned: v4
