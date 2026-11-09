@@ -68,7 +68,11 @@ export function runPlayground({ root, settings, commands, baselineRef, stagedRef
 
     if (commands.typecheck) {
       const staged = runCommand(stagedDir, commands.typecheck, { timeoutMs: configured.timeoutMs });
-      const evalResult = evaluateTypecheck({ staged, settings: configured });
+      // Baseline only when needed: a clean staged typecheck has nothing to compare.
+      const baseline = staged.code !== 0 && staged.code !== 127 && staged.code !== "timeout" && baselineDir
+        ? runCommand(baselineDir, commands.typecheck, { timeoutMs: configured.timeoutMs })
+        : null;
+      const evalResult = evaluateTypecheck({ staged, baseline, settings: configured });
       if (evalResult.finding) findings.push(evalResult.finding);
       lines.push(...evalResult.lines);
       results.push({ stage: "typecheck", cmd: commands.typecheck, code: staged.code, ms: staged.ms });

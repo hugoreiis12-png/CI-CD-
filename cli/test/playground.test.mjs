@@ -91,12 +91,23 @@ test("playground blocks a regression (suite fails where HEAD was clean)", () => 
 test("typecheck gate blocks when the type command fails on the staged snapshot", () => {
   const dir = nodeProject();
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
-  pkg.scripts.typecheck = "node -e 'process.exit(1)'";
+  pkg.scripts.typecheck = "node types.mjs";
   write(dir, "package.json", JSON.stringify(pkg, null, 2));
+  write(dir, "types.mjs", 'console.log("error TS1: base"); process.exit(1);\n');
   runInit({ root: dir, quiet: true });
+  git(dir, ["add", "."]);
+  git(dir, ["commit", "-qm", "types", "--no-verify"]);
+
+  // Same errors as the base: pre-existing, does not block.
   write(dir, "src/calc.js", "/* comment change */\n".concat(fs.readFileSync(path.join(dir, "src/calc.js"), "utf8")));
   git(dir, ["add", "."]);
+  const same = runGate({ root: dir, json: true });
+  assert.ok(same.findings.some((f) => f.rule === "pre-existing-type-errors" && f.severity === "low"));
+  assert.equal(same.verdict, "approved");
 
+  // More errors than the base: blocks.
+  write(dir, "types.mjs", 'console.log("error TS1: a"); console.log("error TS2: b"); process.exit(1);\n');
+  git(dir, ["add", "."]);
   const run = runGate({ root: dir, json: true });
   const findings = run.findings.filter((f) => f.rule === "playground-typecheck");
   assert.equal(findings.length, 1);

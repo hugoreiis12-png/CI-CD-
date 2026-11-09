@@ -41,11 +41,25 @@ export function runCommand(dir, cmd, { timeoutMs = 120_000 } = {}) {
 
   const timedOut = /** @type {NodeJS.ErrnoException | undefined} */ (result.error)?.code === "ETIMEDOUT";
   const code = timedOut ? "timeout" : result.status ?? "error";
-  const stdout = tail(`${result.stdout ?? ""}\n${result.stderr ?? ""}`);
-  return { cmd, code, ms: Date.now() - started, stdout };
+  const full = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  // Counted on the full output: the kept tail would undercount long reports.
+  return { cmd, code, ms: Date.now() - started, stdout: tail(full), errors: countErrors(full) };
 }
 
 const tail = (/** @type {string} */ s, max = 4000) => (s.length > max ? `…${s.slice(-max)}` : s);
+
+/**
+ * Error count of a typecheck/lint report: tsc ("error TS1234"), mypy
+ * ("Found N errors"), pyright ("N errors"), else lines containing "error".
+ * @param {string} output
+ */
+export function countErrors(output) {
+  const tsc = output.match(/\berror TS\d+/g);
+  if (tsc) return tsc.length;
+  const summary = output.match(/(?:Found\s+)?(\d+)\s+errors?\b/i);
+  if (summary) return Number.parseInt(summary[1], 10);
+  return output.split("\n").filter((line) => /\berror\b/i.test(line)).length;
+}
 
 /**
  * Best-effort failure count from test-runner output. Reads failure summaries
