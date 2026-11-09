@@ -12,6 +12,21 @@ It analyzes the project's stack and architecture, wires an adaptive CI/CD pipeli
 
 ---
 
+## Install
+
+Requirements: `gh` (authenticated), `git`, Node.js ≥ 20. The extension is hosted in this repository (`hugoreiis12-png/CI-CD-`). `gh extension install owner/repo` only accepts repositories named `gh-*`, so install from a local clone pinned to a release tag:
+
+```bash
+git clone --depth 1 --branch v0.1.0 https://github.com/hugoreiis12-png/CI-CD-.git ~/.local/share/esteira/gh-esteira
+cd ~/.local/share/esteira/gh-esteira && gh extension install .
+gh esteira --version
+```
+
+Upgrade: `git -C ~/.local/share/esteira/gh-esteira fetch --depth 1 origin tag vX.Y.Z && git -C ~/.local/share/esteira/gh-esteira checkout vX.Y.Z`.
+Generated workflows fetch the same repository at `ESTEIRA_REF` (the release tag; `gh esteira pin` rewrites it to a commit SHA) in a step without secrets and run `node "$ESTEIRA" …`.
+
+Then, inside any project: `gh esteira init` → commit (the pre-commit gate runs) → push / open a PR (the `security-gate` job re-runs the gate server-side; make it a required check).
+
 ## 1. Vision & core guarantees
 
 | Guarantee | Meaning |

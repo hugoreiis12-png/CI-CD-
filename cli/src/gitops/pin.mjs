@@ -104,6 +104,20 @@ export async function pinWorkflows({
       if (next.includes(before)) next = next.replace(before, `${use.prefix}${replacement}`);
       report.resolved.push({ file: rel, action: use.action, ref: use.ref, sha });
     }
+    // The Esteira CLI itself (ESTEIRA_REPO@ESTEIRA_REF) is a build input too.
+    const repo = original.match(/^\s*ESTEIRA_REPO:\s*(\S+)/m)?.[1];
+    const pinnedRef = original.match(/^(\s*ESTEIRA_REF:\s*)(\S+)(.*)$/m);
+    if (repo && pinnedRef && !/^[0-9a-f]{40}$/.test(pinnedRef[2])) {
+      const [line, prefix, ref] = pinnedRef;
+      try {
+        const sha = await resolveRef(repo, ref);
+        if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`not a 40-char SHA: ${sha}`);
+        next = next.replace(line, `${prefix}${sha} # pinned: ${ref}`);
+        report.resolved.push({ file: rel, action: repo, ref, sha });
+      } catch (error) {
+        report.unresolved.push({ file: rel, action: repo, ref, reason: errorLine(error) });
+      }
+    }
     if (next !== original && !dryRun) {
       writeFile(root, rel, next);
       report.filesTouched.push(rel);

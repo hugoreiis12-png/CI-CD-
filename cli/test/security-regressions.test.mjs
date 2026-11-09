@@ -109,7 +109,9 @@ test("S1/S5: generated CI runs the real gate on the change set", () => {
   const wf = renderWorkflow({ languages: [], commands: {} });
   assert.doesNotMatch(wf, /placeholder \(M2\)/);
   assert.match(wf, /git reset --soft "\$BASE_SHA"/);
-  assert.match(wf, /run: gh esteira gate --policy-ref "\$BASE_SHA"/);
+  assert.match(wf, /run: node "\$ESTEIRA" gate --policy-ref "\$BASE_SHA"/);
+  assert.match(wf, /ESTEIRA_REPO: hugoreiis12-png\/CI-CD-/);
+  assert.doesNotMatch(wf, /gh extension install|REPLACE-ME\/gh-esteira|\|\| true/);
   assert.match(wf, /fetch-depth: 0/);
 });
 

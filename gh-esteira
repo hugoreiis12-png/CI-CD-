@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# gh extension entry point: `gh esteira <command>` runs the CLI in cli/.
+set -eu
+DIR="$(cd "$(dirname "$0")" && pwd -P)"
+exec node "$DIR/cli/src/index.mjs" "$@"

@@ -1,6 +1,7 @@
 /** @typedef {import("../types.js").CommandKey} CommandKey */
 /** @typedef {import("../types.js").Profile} Profile */
 import { exists, writeFile, writeIfMissing } from "../lib/fs-tools.mjs";
+import { sourceEnv, installStep } from "./esteira-source.mjs";
 
 const step = (/** @type {string} */ name, /** @type {string} */ run) => `      - name: ${name}\n        run: ${run}`;
 const uses = (/** @type {string} */ action, withBlock = "") =>
@@ -79,8 +80,7 @@ ${steps.join("\n")}
   security-gate:
     runs-on: ubuntu-latest
     env:
-      ESTEIRA_EXT: REPLACE-ME/gh-esteira # repo that publishes the gh-esteira extension
-      BASE_SHA: ${"${{ github.event.pull_request.base.sha || github.event.before }}"}
+${sourceEnv("      ")}      BASE_SHA: ${"${{ github.event.pull_request.base.sha || github.event.before }}"}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,11 +88,7 @@ ${steps.join("\n")}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install Esteira
-        env:
-          GH_TOKEN: ${"${{ github.token }}"}
-        run: gh extension install "$ESTEIRA_EXT"
-      # Stage everything since the base so \`gate\` judges the whole change set.
+${installStep}      # Stage everything since the base so \`gate\` judges the whole change set.
       - name: Stage the change set against its base
         run: |
           if [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
@@ -101,7 +97,7 @@ ${steps.join("\n")}
           git reset --soft "$BASE_SHA"
       # Policy comes from the base commit, never from the PR being judged.
       - name: Esteira gate (server-side)
-        run: gh esteira gate --policy-ref "$BASE_SHA"
+        run: node "$ESTEIRA" gate --policy-ref "$BASE_SHA"
 `;
 }
 

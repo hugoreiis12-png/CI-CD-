@@ -125,3 +125,31 @@ test("pin: SHA-pins refs with audit comments; rerun is a no-op", async () => {
   assert.equal(second.resolved.length, 0);
   assert.ok(second.skipped.every((s) => s.reason === "already SHA-pinned" || s.reason === "not found"));
 });
+
+test("release workflow installs the pinned CLI in a step without GITOPS_TOKEN", () => {
+  const dir = fixture();
+  runInit({ root: dir, quiet: true });
+  runGitops({ root: dir, gitopsRepo: "acme/gitops", quiet: true });
+  const wf = fileRead(dir, ".github/workflows/esteira-release.yml");
+  assert.match(wf, /ESTEIRA_REPO: hugoreiis12-png\/CI-CD-/);
+  assert.match(wf, /ESTEIRA_REF: v\d+\.\d+\.\d+/);
+  assert.doesNotMatch(wf, /gh extension install|\|\| true|REPLACE-ME\/gh-esteira/);
+  // every install step precedes, and is separate from, the step holding the token
+  const steps = wf.split(/\n(?=      - )/);
+  for (const step of steps.filter((s) => s.includes("Install Esteira"))) assert.doesNotMatch(step, /GITOPS_TOKEN/);
+  assert.equal((wf.match(/node "\$ESTEIRA" promote/g) ?? []).length, 2);
+});
+
+test("pin rewrites ESTEIRA_REF to a commit SHA of ESTEIRA_REPO", async () => {
+  const dir = fixture();
+  runInit({ root: dir, quiet: true });
+  const calls = [];
+  const report = await pinWorkflows({
+    root: dir, existsFile: exists, readFile: fileRead, writeFile: fileWrite,
+    resolveRef: (action, ref) => { calls.push(`${action}@${ref}`); return "a".repeat(40); },
+  });
+  const wf = fileRead(dir, ".github/workflows/esteira-ci.yml");
+  assert.match(wf, /ESTEIRA_REF: a{40} # pinned: v\d+\.\d+\.\d+/);
+  assert.ok(calls.some((c) => c.startsWith("hugoreiis12-png/CI-CD-@v")));
+  assert.equal(report.unresolved.length, 0);
+});

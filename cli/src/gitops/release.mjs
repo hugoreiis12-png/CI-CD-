@@ -1,3 +1,5 @@
+import { sourceEnv, installStep } from "../adapters/esteira-source.mjs";
+
 /**
  * Build & publish workflow: OCI image tagged by the immutable commit SHA,
  * with SBOM + provenance attestations on by default, then a Trivy scan and a
@@ -26,8 +28,7 @@ env:
   APP: ${app}
   REGISTRY: ${registry}
   GITOPS_REPO: ${gitopsRepo}
-  ESTEIRA_EXT: REPLACE-ME/gh-esteira # repo that publishes the gh-esteira extension
-
+${sourceEnv("  ")}
 jobs:
   build-publish:
     # packages:write is scoped to the only job that needs it (README §7).
@@ -101,13 +102,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # GH_TOKEN needs write access to the GitOps repo (PR only; no cluster credentials).
+${installStep}      # GH_TOKEN needs write access to the GitOps repo (PR only; no cluster credentials).
+      # It is scoped to this step only: the CLI was installed above without it.
       - name: Open GitOps promotion PR (staging)
         env:
           GH_TOKEN: \${{ secrets.GITOPS_TOKEN }}
-        run: |
-          gh extension install "\${{ env.ESTEIRA_EXT }}" || true
-          gh esteira promote --env staging --tag "\${{ github.sha }}" --repo "\${{ env.GITOPS_REPO }}"
+        run: node "$ESTEIRA" promote --env staging --tag "\${{ github.sha }}" --repo "\${{ env.GITOPS_REPO }}"
 
   # Production promotion is manual: run this workflow via workflow_dispatch from a tag,
   # behind a protected environment with required reviewers.
@@ -120,11 +120,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Open GitOps promotion PR (production)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+${installStep}      - name: Open GitOps promotion PR (production)
         env:
           GH_TOKEN: \${{ secrets.GITOPS_TOKEN }}
-        run: |
-          gh extension install "\${{ env.ESTEIRA_EXT }}" || true
-          gh esteira promote --env production --tag "\${{ github.sha }}" --repo "\${{ env.GITOPS_REPO }}"
+        run: node "$ESTEIRA" promote --env production --tag "\${{ github.sha }}" --repo "\${{ env.GITOPS_REPO }}"
 `;
 }
