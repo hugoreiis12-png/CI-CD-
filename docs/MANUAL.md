@@ -362,8 +362,6 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 | `analyze` mostra `Linguagens: nenhuma` | Não há manifesto (`package.json`, `pyproject.toml`, `go.mod`…) na raiz; o código está em subpastas | Veja a seção `Subprojetos` do `analyze`: rode a esteira dentro de cada repositório, ou configure `profile.commands` se for um monorepo |
 | Projeto Bun aparece como `npm` (até a v0.1.2) | O detector só conhecia o lockfile antigo `bun.lockb` | Atualize para a v0.1.3, que reconhece também o `bun.lock` |
 | `playground-skipped` | Nenhum comando de teste | Preencha `profile.commands.test` |
-| `validate` ou `security-gate` do CI falham com `cancelled` ou `playground … FAILED` (até esta versão) | Um teste chamava o Hermes no endereço da LAN, inalcançável no runner do GitHub, e esperava 60 s | Corrigido: o transporte do Hermes agora tem prazo rígido, e os testes de auditoria desligam o LLM. Atualize com `gh esteira update` |
-| `security-gate` falha num push que cria a branch | O `before` do push vem como `0000…`, e não há commit base | Corrigido: o workflow compara com `HEAD~1` nesse caso. Rode `gh esteira update --force` para regenerar |
 | Commit bloqueado por `playground-typecheck` sem mexer em tipos (até a v0.2.0) | O projeto já tinha erros de tipo, e o gate não comparava com a base | Atualize para a v0.2.1: erros preexistentes viram o aviso `pre-existing-type-errors` |
 | `security-gate` pula os testes no 1º PR | A `main` ainda não tem o manifesto | Normal: a partir do merge, os testes rodam |
 | O PR não pode ser mergeado | Check obrigatório falhou, ou a branch está desatualizada (`strict`) | `gh run view --log-failed`; atualize a branch com a `main` |
