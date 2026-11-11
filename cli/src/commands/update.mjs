@@ -17,7 +17,7 @@ const REASONS = {
   regenerated: "regenerado",
 };
 
-const GITIGNORE_LINES = [".esteira/runs/", ".esteira/tmp/", ".esteira/hooks/"];
+const GITIGNORE_LINES = [".esteira/runs/", ".esteira/tmp/", ".esteira/hooks/", ".esteira/heals/", ".esteira/backups/"];
 
 /**
  * @param {{ resolved: { file: string, action?: string, ref?: string, sha?: string }[], unresolved: { file: string, action?: string, ref?: string, reason?: string }[], skipped: { file: string, action?: string, reason?: string }[], filesTouched: string[] }} report
@@ -64,7 +64,7 @@ export async function runUpdate({
       process.stdout.write(
         `${renderText(profile)}\n\nDry-run — nada foi gravado. Adaptadores previstos:\n` +
         "  - .esteira/project.json (perfil; política preservada)\n" +
-        "  - .github/workflows/esteira-ci.yml (só com --force)\n" +
+        "  - .github/workflows/esteira-ci.yml (regenerado se for da esteira e estiver desatualizado; backup em .esteira/backups)\n" +
         "  - .esteira/hooks + git config core.hooksPath\n" +
         "  - .gitignore (linhas de .esteira/)\n" +
         "  - pin das actions por SHA\n"
@@ -75,7 +75,7 @@ export async function runUpdate({
 
   const results = [
     writeManifest(root, profile),
-    writeWorkflow(root, profile, { force }),
+    writeWorkflow(root, profile, { force, refresh: true }),
     installHook(root),
     { path: ".gitignore", ...appendUniqueLines(root, ".gitignore", GITIGNORE_LINES) },
   ];

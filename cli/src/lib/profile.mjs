@@ -9,9 +9,34 @@
 import { fingerprint, IGNORED_DIRS } from "./fingerprint.mjs";
 import { detectors } from "../detectors/index.mjs";
 import { isDir, exists, listDir, errorLine } from "./fs-tools.mjs";
+import { installCommandFor } from "./install.mjs";
 
 /** @type {CommandKey[]} */
 export const COMMAND_KEYS = ["lint", "typecheck", "test", "build"];
+
+const emptyCommands = () => /** @type {Record<CommandKey, string | null>} */ ({ lint: null, typecheck: null, test: null, build: null });
+
+/**
+ * `npm run X` of a subproject, rewritten to run from the root (`--prefix`).
+ * Other forms (`npx tsc`) are not rebased: they would run in the wrong folder.
+ * @param {string} dir @param {string | null | undefined} cmd
+ */
+const rootedNpmScript = (dir, cmd) => (cmd?.startsWith("npm run ") ? `npm --prefix ${dir} run ${cmd.slice("npm run ".length)}` : null);
+
+/**
+ * Commands for a repository whose only project lives in one subfolder (cli/).
+ * Several subprojects are not chained automatically: the gap stays visible.
+ * @param {import("../types.js").Subproject[]} subprojects
+ * @returns {Record<CommandKey, string | null>}
+ */
+export function commandsFromSubprojects(subprojects) {
+  const commands = emptyCommands();
+  if (subprojects.length !== 1) return commands;
+  const [sub] = subprojects;
+  const own = sub.languages[0]?.commands ?? {};
+  for (const key of COMMAND_KEYS) commands[key] = rootedNpmScript(sub.path, own[key]);
+  return commands;
+}
 
 /** @type {InfraProfile} */
 const EMPTY_INFRA = {
@@ -54,7 +79,13 @@ function findSubprojects(root, warnings) {
     const dir = `${root}/${entry.name}`;
     const languages = detectAll(dir, fingerprint(dir, { maxFiles: 5000 }), warnings)
       .filter(/** @returns {f is LanguageFinding} */ (f) => f.type === "language")
-      .map((f) => ({ id: f.id, packageManager: f.packageManager ?? null }));
+      .map((f) => ({
+        id: f.id,
+        packageManager: f.packageManager ?? null,
+        runtime: f.runtime ?? {},
+        commands: f.commands ?? {},
+        installCommand: installCommandFor(root, entry.name, f.packageManager ?? null),
+      }));
     if (languages.length) found.push({ path: entry.name, languages, gitRepo: exists(dir, ".git") });
   }
   return found;
@@ -78,19 +109,20 @@ export function buildProfile(root) {
       frameworks: f.frameworks ?? [],
       evidence: f.evidence ?? [],
       commands: f.commands ?? {},
+      installCommand: installCommandFor(root, "", f.packageManager ?? null),
     }));
 
   const infra = findings.find(/** @returns {f is InfraFinding} */ (f) => f.type === "infra")?.infra ?? { ...EMPTY_INFRA };
   const workspacesTool = findings.map((f) => f.workspaces).find(Boolean) ?? null;
   const layout = ["apps", "packages", "services", "libs", "modules"].filter((d) => isDir(root, d));
 
-  /** @type {Record<CommandKey, string | null>} */
-  const commands = { lint: null, typecheck: null, test: null, build: null };
-  for (const key of COMMAND_KEYS) {
-    commands[key] = languages.map((l) => l.commands[key]).find(Boolean) ?? null;
-  }
-
   const subprojects = languages.length === 0 ? findSubprojects(root, warnings) : [];
+  const fromSubprojects = commandsFromSubprojects(subprojects);
+
+  const commands = emptyCommands();
+  for (const key of COMMAND_KEYS) {
+    commands[key] = languages.map((l) => l.commands[key]).find(Boolean) ?? fromSubprojects[key] ?? null;
+  }
 
   /** @type {Gap[]} */
   const gaps = [];

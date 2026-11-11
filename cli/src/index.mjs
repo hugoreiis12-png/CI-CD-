@@ -14,6 +14,9 @@ import { runReport } from "./report/cloudflare.mjs";
 import { runOrchestrate } from "./hermes/run.mjs";
 import { runHelp, overview } from "./commands/help.mjs";
 import { runHook } from "./hooks/run.mjs";
+import { runAgent } from "./agent/repl.mjs";
+import { runHeal, renderHeal } from "./heal/run.mjs";
+import { newerVersionAvailable, upgradeExtension, runGh } from "./commands/self-update.mjs";
 import { installGlobalHooks, uninstallGlobalHooks } from "./adapters/precommit.mjs";
 import { pinWorkflows, makeGhResolver } from "./gitops/pin.mjs";
 import { exists, readFile, writeFile, errorLine } from "./lib/fs-tools.mjs";
@@ -47,6 +50,8 @@ const VERSION = JSON.parse(
  * @property {string} [repo]
  * @property {string} [app]
  * @property {string} [out]
+ * @property {boolean} [ci]
+ * @property {boolean} [noExtension]
  */
 
 /** @param {string[]} argv @returns {{ flags: Flags, positional: string[] }} */
@@ -73,6 +78,8 @@ function parse(argv) {
     else if (a === "--head") flags.head = true;
     else if (a === "--no-llm") flags.llm = false;
     else if (a === "--quiet") flags.quiet = true;
+    else if (a === "--ci") flags.ci = true;
+    else if (a === "--no-extension") flags.noExtension = true;
     else if (a === "--out") flags.out = argv[++i];
     else if (a === "--tag") flags.tag = argv[++i];
     else if (a === "--env") flags.env = argv[++i];
@@ -138,8 +145,16 @@ async function main() {
         break;
       }
       runInit({ root: flags.dir, dryRun: flags.dryRun, force: flags.force });
+      if (!flags.dryRun) process.exitCode = await pinAfterInit(flags.dir);
       break;
     case "update": {
+      if (!flags.dryRun && !flags.noExtension) {
+        const childStatus = upgradeThenRelaunch(flags);
+        if (childStatus !== null) {
+          process.exitCode = childStatus;
+          break;
+        }
+      }
       const resolveRef = await makeGhResolver();
       const out = await runUpdate({
         root: flags.dir, dryRun: flags.dryRun, force: flags.force, quiet: flags.quiet, json: flags.json,
@@ -191,6 +206,15 @@ async function main() {
       process.exitCode = plan.exitCode;
       break;
     }
+    case "agent":
+      process.exitCode = await runAgent({ root: flags.dir });
+      break;
+    case "heal": {
+      const outcome = await runHeal({ root: flags.dir, ci: flags.ci, dryRun: flags.dryRun });
+      process.stdout.write(renderHeal(outcome));
+      process.exitCode = outcome.status === "rejected" ? 1 : 0;
+      break;
+    }
     case "pin": {
       const resolveRef = await makeGhResolver();
       const report = await pinWorkflows({
@@ -206,6 +230,40 @@ async function main() {
       process.stderr.write(`[esteira] comando desconhecido: ${command}\n\n${overview()}`);
       process.exitCode = 1;
   }
+}
+
+/**
+ * `gh esteira update` first brings the extension to the latest published tag,
+ * then hands the project update to the new copy (--no-extension stops the loop).
+ * Returns the child's exit code, or null when nothing changed or the upgrade
+ * failed (the project is then updated by the running version).
+ * @param {Flags} flags @returns {number | null}
+ */
+function upgradeThenRelaunch(flags) {
+  const target = newerVersionAvailable(VERSION);
+  if (!target) return null;
+  process.stdout.write(`Esteira ${VERSION} instalada; ${target} está disponível. Atualizando a extensão…\n`);
+  const upgraded = upgradeExtension(target);
+  if (!upgraded.ok) {
+    process.stdout.write(`[esteira] não consegui atualizar a extensão (${upgraded.method}); seguindo com a ${VERSION}.\n`);
+    return null;
+  }
+  process.stdout.write(`Extensão em ${upgraded.version}. Reaplicando o projeto com ela.\n`);
+  const args = ["esteira", "update", "--no-extension", "--dir", flags.dir];
+  if (flags.force) args.push("--force");
+  return runGh(args, { inherit: true }).status ?? 1;
+}
+
+/**
+ * `init` ends configured: the actions of the generated workflows are pinned
+ * by SHA right away (needs gh). An unresolved pin is reported, not hidden.
+ * @param {string} root @returns {Promise<number>} exit code
+ */
+async function pinAfterInit(root) {
+  const resolveRef = await makeGhResolver();
+  const report = await pinWorkflows({ root, resolveRef, existsFile: exists, readFile, writeFile });
+  process.stdout.write(renderPin(report, false));
+  return report.unresolved.length > 0 ? 1 : 0;
 }
 
 main().catch((error) => {

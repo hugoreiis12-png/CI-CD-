@@ -172,6 +172,16 @@ export interface Language {
   frameworks: string[];
   evidence: string[];
   commands: Commands;
+  /** Command that installs dependencies in CI (lifecycle scripts off); null when unknown. */
+  installCommand?: string | null;
+}
+
+/** Result of one Hermes LLM call (hermes/adapter.mjs). Never throws. */
+export interface LlmResult {
+  status: "ok" | "skipped" | "error";
+  text: string;
+  ms: number;
+  error: string | null;
 }
 
 export interface Gap {
@@ -182,7 +192,7 @@ export interface Gap {
 /** A project found one folder below a root that has no manifest of its own. */
 export interface Subproject {
   path: string;
-  languages: { id: string; packageManager: string | null }[];
+  languages: { id: string; packageManager: string | null; runtime: Record<string, string>; commands: Commands; installCommand: string | null }[];
   /** The folder is its own git repository (not tracked by the parent). */
   gitRepo: boolean;
 }

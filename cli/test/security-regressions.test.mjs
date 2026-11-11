@@ -122,8 +122,9 @@ test("S7: a previous hooks dir is chained, and re-init never chains to itself", 
 test("S1/S5: generated CI runs the real gate on the change set", () => {
   const wf = renderWorkflow({ languages: [], commands: {} });
   assert.doesNotMatch(wf, /placeholder \(M2\)/);
-  assert.match(wf, /git reset --soft "\$BASE_SHA"/);
-  assert.match(wf, /run: node "\$ESTEIRA" gate --policy-ref "\$BASE_SHA"/);
+  // The base is resolved first (HEAD~1 when before=0000…); policy comes from that base.
+  assert.match(wf, /git reset --soft "\$CHANGE_BASE"/);
+  assert.match(wf, /run: node "\$ESTEIRA" gate --policy-ref "\$CHANGE_BASE"/);
   assert.match(wf, /ESTEIRA_REPO: hugoreiis12-png\/gh-esteira/);
   assert.doesNotMatch(wf, /gh extension install|REPLACE-ME\/gh-esteira|\|\| true/);
   assert.match(wf, /fetch-depth: 0/);

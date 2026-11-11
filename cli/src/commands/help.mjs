@@ -34,11 +34,12 @@ export const COMMANDS = {
     notes: "Os hooks rodam a esteira no commit, merge e push (bloqueiam) e no pull/rebase (avisam). No projeto, cria .esteira/project.json e esteira-ci.yml (commite os dois) e os hooks em .esteira/hooks. Rodar de novo regera o profile e preserva a política. Desligar num repositório: git config esteira.enabled false.",
   },
   update: {
-    summary: "Reajusta a esteira no projeto: re-análise, re-aplica hooks/workflow/.gitignore e re-pina actions. Idempotente.",
-    usage: "gh esteira update [--dry-run] [--force] [--json] [--dir <pasta>]",
+    summary: "Atualiza a extensão para a versão mais nova e reajusta o projeto (hooks, workflow, .gitignore e actions por SHA). Idempotente.",
+    usage: "gh esteira update [--dry-run] [--force] [--no-extension] [--json] [--dir <pasta>]",
     flags: [
-      ["--dry-run", "mostra o que seria feito, sem gravar nada"],
-      ["--force", "regenera o .github/workflows/esteira-ci.yml mesmo que ele já exista"],
+      ["--dry-run", "mostra o que seria feito, sem gravar nada e sem atualizar a extensão"],
+      ["--force", "regenera o .github/workflows/esteira-ci.yml mesmo que ele tenha sido editado"],
+      ["--no-extension", "não consulta nem atualiza a extensão (usado internamente após a atualização)"],
       ["--json", "saída em JSON"],
       ["--dir <pasta>", "projeto alvo (padrão: pasta atual)"],
     ],
@@ -46,6 +47,24 @@ export const COMMANDS = {
     notes:
       "Rode sempre que a stack mudar (nova linguagem, novo package manager, novo comando de teste) ou após atualizar a extensão. " +
       "Preserva a política que você editou em .esteira/project.json (gate/audit/llm). O pin refixa as actions por SHA.",
+  },
+  agent: {
+    summary: "Chat interativo com o Hermes sobre o projeto (stack, gate, CI, testes). Somente leitura.",
+    usage: "gh esteira agent [--dir <pasta>]",
+    flags: [["--dir <pasta>", "projeto alvo (padrão: pasta atual)"]],
+    examples: ["gh esteira agent", "gh esteira agent --dir ../outro-projeto"],
+    notes: "O Hermes lê arquivos, git, gate, auditoria e logs do CI, e roda os testes num snapshot do HEAD. Nunca escreve: não edita, não commita, não reconfigura. Comandos dentro do chat: /limpar, /ajuda, /sair.",
+  },
+  heal: {
+    summary: "Diagnostica o problema (gate, conflito de merge ou CI), pede a correção ao Hermes e aplica só se o typecheck e os testes passarem.",
+    usage: "gh esteira heal [--ci] [--dry-run] [--dir <pasta>]",
+    flags: [
+      ["--ci", "também analisa o último run com falha do GitHub Actions (via gh)"],
+      ["--dry-run", "verifica a correção sem gravar nada"],
+      ["--dir <pasta>", "projeto alvo (padrão: pasta atual)"],
+    ],
+    examples: ["gh esteira heal", "gh esteira heal --ci", "gh esteira heal --dry-run"],
+    notes: "Quando o commit é bloqueado, o pre-commit já roda o heal. A correção fica no working tree, sem stage nem commit: revise com git diff e commite de novo. Não aplica nada sem verificação e não grava se a verificação falhar. Desligar no commit: ESTEIRA_HEAL=0.",
   },
   analyze: {
     summary: "Detecta linguagens, gerenciador de pacotes, frameworks, infraestrutura e comandos. Só lê.",
@@ -161,7 +180,7 @@ export function overview() {
     "  gh esteira help manual      manual completo em PT-BR no terminal",
     `  ${MANUAL_URL}`,
     "",
-    "Fluxo típico: gh esteira init → gh esteira pin → git commit (gate) → git push (attest) → PR (security-gate no CI)",
+    "Fluxo típico: gh esteira init (configura e fixa as actions) → git commit (gate; se bloquear, heal) → git push → PR (security-gate no CI)",
     "",
   ].join("\n");
 }

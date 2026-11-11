@@ -1,62 +1,86 @@
 /** @typedef {import("../types.js").LlmSettings} LlmSettings */
+/** @typedef {import("../types.js").LlmResult} LlmResult */
 
 /**
- * Ollama /api/generate transport for the Hermes LLM — the advisory
- * orchestrator layer of the Esteira CLI.
+ * Ollama transport for the Hermes LLM — the advisory and agent layer of the
+ * Esteira CLI.
  *
  * Design rules:
  *  - Advisory only. Hermes never sets, overrides or softens a verdict:
  *    deterministic checks (gate checks, CVE severity >= failOn) are the
  *    enforcement point; Hermes explains and prioritizes.
  *  - Never a failure source. Any transport/parse error degrades to
- *    `{ ...fields, error }` and the pipeline continues without the LLM.
- *  - Offline-safe: `endpoint: null` (or disabled config) short-circuits to
- *    `skipped` with zero network traffic — tests and air-gapped repos never
- *    pay a round trip.
+ *    `{ status: "error", error }` and the caller continues without the LLM.
+ *  - Bounded: the deadline is enforced by racing (withDeadline), so a
+ *    transport that ignores AbortSignal cannot hang the pipeline.
+ *  - Offline-safe: `endpoint: null` short-circuits to `skipped` with zero traffic.
  *
- * `fetchImpl` is injectable so tests run fully offline: a fake `fetch` is
- * passed in and never touches the network.
+ * `fetchImpl` is injectable so tests run fully offline.
  */
+import { withDeadline } from "../lib/deadline.mjs";
+import { errorLine } from "../lib/fs-tools.mjs";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 /**
- * One LLM completion via Ollama `/api/generate`.
+ * One Ollama request under a hard deadline, mapped to the shared result shape.
  * @param {{
  *   settings: LlmSettings,
- *   prompt: string,
+ *   path: "/api/generate" | "/api/chat",
+ *   body: Record<string, unknown>,
+ *   read: (data: any) => unknown,
  *   fetchImpl?: unknown,
  *   timeoutMs?: number,
- * }} input
- * @returns {Promise<{ status: "ok" | "skipped" | "error", text: string, ms: number, error: string | null }>}
+ * }} req
+ * @returns {Promise<LlmResult>}
  */
-export async function generate({ settings, prompt, fetchImpl, timeoutMs }) {
+async function ollama({ settings, path, body, read, fetchImpl, timeoutMs }) {
   const started = Date.now();
-  if (!settings.endpoint) {
-    return { status: "skipped", text: "", ms: Date.now() - started, error: null };
-  }
+  const elapsed = () => Date.now() - started;
+  if (!settings.endpoint) return { status: "skipped", text: "", ms: 0, error: null };
   const timeout = timeoutMs ?? settings.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const fetcher = /** @type {Function} */ (fetchImpl ?? globalThis.fetch);
   try {
-    const fetcher = /** @type {import("../types.js").FetchImpl} */ (fetchImpl ?? globalThis.fetch);
-    const response = await fetcher(`${settings.endpoint.replace(/\/$/, "")}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: settings.model, prompt, stream: false }),
-      signal: AbortSignal.timeout(timeout),
-    });
-    if (!response.ok) {
-      return { status: "error", text: "", ms: Date.now() - started, error: `HTTP ${response.status}` };
-    }
-    const data = /** @type {any} */ (await response.json());
-    const text = typeof data?.response === "string" ? data.response.trim() : "";
-    if (!text) {
-      return { status: "error", text: "", ms: Date.now() - started, error: "resposta vazia" };
-    }
-    return { status: "ok", text, ms: Date.now() - started, error: null };
+    const text = await withDeadline(async () => {
+      const response = await fetcher(`${settings.endpoint?.replace(/\/$/, "")}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: settings.model, stream: false, ...body }),
+        signal: AbortSignal.timeout(timeout),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const value = read(await response.json());
+      return typeof value === "string" ? value.trim() : "";
+    }, timeout, "LLM");
+    return text
+      ? { status: "ok", text, ms: elapsed(), error: null }
+      : { status: "error", text: "", ms: elapsed(), error: "resposta vazia" };
   } catch (error) {
-    return {
-      status: "error", text: "", ms: Date.now() - started,
-      error: error instanceof Error ? error.message.split("\n")[0] : String(error),
-    };
+    return { status: "error", text: "", ms: elapsed(), error: errorLine(error) };
   }
+}
+
+/**
+ * One LLM completion via Ollama `/api/generate`.
+ * @param {{ settings: LlmSettings, prompt: string, fetchImpl?: unknown, timeoutMs?: number }} input
+ * @returns {Promise<LlmResult>}
+ */
+export function generate({ settings, prompt, fetchImpl, timeoutMs }) {
+  return ollama({
+    settings, path: "/api/generate", body: { prompt },
+    read: (data) => data?.response, fetchImpl, timeoutMs,
+  });
+}
+
+/**
+ * One chat turn via Ollama `/api/chat`: the whole conversation goes each time
+ * (the model is stateless here; the caller owns the history).
+ * @param {{ settings: LlmSettings, messages: { role: "system" | "user" | "assistant", content: string }[], fetchImpl?: unknown, timeoutMs?: number }} input
+ * @returns {Promise<LlmResult>}
+ */
+export function chat({ settings, messages, fetchImpl, timeoutMs }) {
+  return ollama({
+    settings, path: "/api/chat", body: { messages },
+    read: (data) => data?.message?.content, fetchImpl, timeoutMs,
+  });
 }
