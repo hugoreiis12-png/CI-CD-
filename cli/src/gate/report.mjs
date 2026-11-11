@@ -23,6 +23,12 @@ export function render(run) {
     lines.push("  (nenhum finding)");
   }
 
+  if (run.advisory?.text) {
+    lines.push("");
+    lines.push(`Parecer do Hermes (${run.advisory.model}, ${run.advisory.ms}ms):`);
+    for (const line of run.advisory.text.split("\n")) lines.push(`  ${line}`);
+  }
+
   if (run.note) lines.push(`Nota        : ${run.note}`);
 
   lines.push(

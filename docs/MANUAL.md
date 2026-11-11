@@ -173,10 +173,12 @@ No **primeiro** PR, o `security-gate` usa a política da `main`, que ainda não 
 
 | Você faz | A Esteira faz | Se bloquear |
 |---|---|---|
-| `git commit` / `git merge` | `gate`: checagens estáticas + playground (seus testes no staged e no HEAD) | Corrija os findings, faça `git add` e commit de novo |
+| `git commit` / `git merge` | `gate`: checagens estáticas (inclui marcadores de conflito) + playground (seus testes no staged e no HEAD) | O **heal** roda sozinho: propõe a correção, verifica com o typecheck e os testes do projeto e grava no working tree se passar. Revise com `git diff`, faça `git add` e commit de novo |
 | `git push` | Valida cada commit novo (inclusive `--no-verify`), roda os testes no último e atesta | Corrija o commit apontado em `[commit abc1234]` (por exemplo, com `git rebase -i`) |
 | `git pull` / `git pull --rebase` | Analisa os commits que chegaram e roda o audit se as dependências mudaram | Não bloqueia; trate os avisos (`ATENÇÃO`) |
 | Abrir/atualizar PR | `validate` + `security-gate` no servidor | Veja o log do job (`gh pr checks`, `gh run view --log-failed`) |
+| `gh esteira heal --ci` | Diagnostica o último run com falha do GitHub Actions, propõe a correção e aplica só se a verificação passar | Revise com `git diff`; nada é commitado nem enviado |
+| `gh esteira agent` | Chat interativo com o Hermes sobre o projeto (stack, gate, CI, testes) | Somente leitura: não escreve, não commita |
 | `gh esteira audit` | CVEs das dependências via OSV.dev | Atualize o pacote para a versão indicada em `correção:` |
 | `gh esteira report` | Exporta gate + audit no formato `findings.json` da skill da Cloudflare | — |
 
@@ -201,12 +203,14 @@ Todos aceitam `--dir <path>` (o padrão é o diretório atual). No terminal, `gh
 | `gh esteira hook <nome>` | Uso interno: o que os hooks de git chamam | — |
 | `gh esteira help` | Ajuda em PT-BR: lista de comandos, detalhe de um comando ou o manual completo | `help <comando>`, `help manual` |
 | `gh esteira analyze` | Detecta linguagens, gerenciadores, frameworks, infra e comandos. Só lê. Se a raiz não tem manifesto, lista os projetos das subpastas | `--json` |
-| `gh esteira init` | Cria manifesto, workflow de CI e hooks. Idempotente. | `--dry-run`, `--force` (regenera o workflow) |
+| `gh esteira init` | Configura a esteira no projeto de ponta a ponta: manifesto, workflow de CI (com instalação e testes do subprojeto detectado), hooks e fixação das actions por SHA. Idempotente. | `--dry-run`, `--force` (regenera o workflow) |
+| `gh esteira heal` | Diagnostica gate bloqueado, conflito de merge ou CI com falha; pede a correção ao Hermes e só grava se o typecheck e os testes passarem | `--ci`, `--dry-run` |
+| `gh esteira agent` | Conversa com o Hermes em modo somente leitura. Comandos no chat: `/limpar`, `/ajuda`, `/sair` | `--dir <path>` |
 | `gh esteira gate` | Roda o gate sobre o que está **staged** | `--json`, `--head` (valida e atesta o último commit), `--policy-ref <commit>` (usado no CI: lê a política desse commit) |
 | `gh esteira attest --verify` | Confere se o HEAD é um snapshot aprovado | `--json` |
 | `gh esteira audit` | Gera um SBOM e consulta o OSV.dev; grava `.esteira/audits/latest.json` | `--json` |
 | `gh esteira gitops` | Gera `deploy/k8s` (base + staging/production), Argo CD e `esteira-release.yml` | `--image <ref>`, `--gitops-repo owner/repo`, `--force` |
-| `gh esteira pin` | Fixa por SHA todo `uses:` e o `ESTEIRA_REF` nos workflows da Esteira | `--dry-run`, `--json` |
+| `gh esteira pin` | Fixa por SHA todo `uses:` e o `ESTEIRA_REF` nos workflows da Esteira (o `init` e o `update` já fazem isso) | `--dry-run`, `--json` |
 | `gh esteira promote` | Abre um PR no repositório GitOps trocando o `newTag` do overlay | `--tag <sha>` (obrigatório), `--env staging\|production`, `--repo owner/repo`, `--app`, `--dry-run` |
 | `gh esteira report` | `findings.json` no contrato da skill da Cloudflare, validado antes de gravar | `--out <path>`, `--json` |
 
@@ -370,7 +374,8 @@ Promoção manual: `gh esteira promote --tag <sha> --env staging --repo OWNER/gi
 ## 13. Limitações conhecidas (v0.2.1)
 
 - **Regras estáticas são heurísticas:** batem em texto, inclusive dentro de strings e comentários. Se um falso positivo aparecer, reescreva o trecho. Não existe allowlist por linha.
-- **Subpastas:** o `analyze` não detecta stacks em subpastas. Configure `profile.commands` à mão.
+- **Subpastas:** quando o código está numa única subpasta (ex.: `cli/`, com `package.json` de scripts `test`/`typecheck`), o `init` usa esses comandos na raiz sozinho (`npm --prefix cli run test`). Com várias subpastas, configure `profile.commands` à mão.
+- **Heal:** a correção só é gravada se o typecheck e os testes passarem com ela aplicada. Sem comandos de verificação, o heal não aplica nada. A correção é validada pelo projeto, não por prova formal.
 - **Repositórios embutidos:** pastas que são outros repositórios git (gitlinks) não são validadas pelo gate do repositório externo. Rode a Esteira em cada um deles.
 - **Idioma:** as mensagens da CLI estão em PT-BR. IDs de regra, chaves de JSON e os textos vindos do OSV.dev (resumo do advisory) continuam em inglês.
 - **Attestations são locais:** `.esteira/runs/*.json` é um registro local, não assinado. A garantia vem do `security-gate` obrigatório no CI.

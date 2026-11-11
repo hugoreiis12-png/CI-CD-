@@ -4,6 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+
+process.env.ESTEIRA_LLM_ENABLED = "false";
 import { runInit } from "../src/commands/init.mjs";
 import { runGate } from "../src/gate/run.mjs";
 import { verifyAttestation } from "../src/gate/attest.mjs";
@@ -58,13 +60,13 @@ test("countFailures parses numeric summaries before FAIL markers", () => {
   assert.equal(countFailures("--- FAIL: TestAlpha\n--- FAIL: TestBeta"), 2);
 });
 
-test("playground approves a suite that still passes (no regression)", () => {
+test("playground approves a suite that still passes (no regression)", async () => {
   const dir = nodeProject();
   runInit({ root: dir, quiet: true });
   write(dir, "src/calc.js", "function add(a, b) { return a + b; }\nmodule.exports = { add };\n// tidy comment\n");
   git(dir, ["add", "."]);
 
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "approved");
   assert.equal(run.exitCode, 0);
   assert.equal(run.playground.ran, true);
@@ -74,13 +76,13 @@ test("playground approves a suite that still passes (no regression)", () => {
   assert.ok(run.snapshot !== run.tree);              // changed-set vs full index
 });
 
-test("playground blocks a regression (suite fails where HEAD was clean)", () => {
+test("playground blocks a regression (suite fails where HEAD was clean)", async () => {
   const dir = nodeProject();
   runInit({ root: dir, quiet: true });
   write(dir, "src/calc.js", "function add(a, b) { return a - b; }\nmodule.exports = { add };\n");
   git(dir, ["add", "."]);
 
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   const rules = run.findings.map((f) => f.rule);
   assert.ok(rules.includes("suite-failure"), rules.join(","));
   assert.equal(run.findings.find((f) => f.rule === "suite-failure").severity, "high");
@@ -88,7 +90,7 @@ test("playground blocks a regression (suite fails where HEAD was clean)", () => 
   assert.equal(run.exitCode, 1);
 });
 
-test("typecheck gate blocks when the type command fails on the staged snapshot", () => {
+test("typecheck gate blocks when the type command fails on the staged snapshot", async () => {
   const dir = nodeProject();
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
   pkg.scripts.typecheck = "node types.mjs";
@@ -115,7 +117,7 @@ test("typecheck gate blocks when the type command fails on the staged snapshot",
   assert.equal(run.verdict, "reproved");
 });
 
-test("playground timeout is a blocking high finding", () => {
+test("playground timeout is a blocking high finding", async () => {
   const dir = nodeProject();
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
   pkg.scripts.typecheck = "sleep 5"; // exceeds the playground budget on both runs
@@ -131,13 +133,13 @@ test("playground timeout is a blocking high finding", () => {
   write(dir, "src/calc.js", "/* comment */\n".concat(fs.readFileSync(path.join(dir, "src/calc.js"), "utf8")));
   git(dir, ["add", "."]);
 
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   const rules = run.findings.map((f) => f.rule);
   assert.ok(rules.includes("playground-timeout"), rules.join(","));
   assert.equal(run.verdict, "reproved");
 }, 20000);
 
-test("attestation: attested HEAD pushes; a --no-verify bypassed commit does not", () => {
+test("attestation: attested HEAD pushes; a --no-verify bypassed commit does not", async () => {
   const dir = nodeProject();
   runInit({ root: dir, quiet: true });
 
@@ -162,7 +164,7 @@ test("attestation: attested HEAD pushes; a --no-verify bypassed commit does not"
   // re-staged identical content re-attests (idempotent) — System of the record
   write(dir, "src/calc.js", "// tweak\n".concat("function add(a, b) { return a + b; }\nmodule.exports = { add };\n"));
   git(dir, ["add", "."]);
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "approved");
   const attested = verifyAttestation({ root: dir, json: true });
   // HEAD is still the bypass commit content, so nothing attested yet — correct strictness.

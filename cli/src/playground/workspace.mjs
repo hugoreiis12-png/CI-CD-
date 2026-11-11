@@ -37,6 +37,20 @@ export function headCommit(root) {
 }
 
 /**
+ * Resolve o executável de `tar`. No Windows, o `tar` do PATH pode vir do
+ * MSYS/Git Bash sem suporte à extração, ou não existir; o `bsdtar` do próprio
+ * Windows vive em System32 e lê tar POSIX sem problemas.
+ * @returns {string} caminho (ou nome) do tar
+ */
+function tarBinary() {
+  if (process.platform === "win32") {
+    const sys = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+    if (fs.existsSync(sys)) return sys;
+  }
+  return "tar";
+}
+
+/**
  * Extracts a commit tree into destDir. `git archive --output` writes the tar
  * straight to disk (no stdout buffer cap) inside a private mkdtemp directory,
  * so the tar path is neither size-limited nor predictable.
@@ -47,7 +61,7 @@ export function extractCommit(root, commit, destDir) {
   const tarPath = path.join(tarDir, "snapshot.tar");
   try {
     gitText(root, ["archive", "--format=tar", `--output=${tarPath}`, commit]);
-    execFileSync("tar", ["-xf", tarPath], { cwd: destDir, stdio: "ignore" });
+    execFileSync(tarBinary(), ["-xf", tarPath], { cwd: destDir, stdio: "ignore" });
   } finally {
     fs.rmSync(tarDir, { recursive: true, force: true });
   }

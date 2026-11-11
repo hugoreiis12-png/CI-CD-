@@ -12,7 +12,8 @@ const PLANNED = [
   ".esteira/project.json",
   ".github/workflows/esteira-ci.yml",
   ".esteira/hooks/pre-commit (+ git config core.hooksPath)",
-  ".gitignore (+ .esteira/runs/, .esteira/tmp/, .esteira/hooks/)",
+  ".gitignore (+ .esteira/runs/, .esteira/tmp/, .esteira/hooks/, .esteira/heals/)",
+  "pin das actions dos workflows por SHA (gh)",
 ];
 
 /** @param {{ root: string, dryRun?: boolean, force?: boolean, quiet?: boolean }} input */
@@ -37,7 +38,7 @@ export function runInit({ root, dryRun = false, force = false, quiet = false }) 
     writeManifest(root, profile),
     writeWorkflow(root, profile, { force }),
     installHook(root),
-    { path: ".gitignore", ...appendUniqueLines(root, ".gitignore", [".esteira/runs/", ".esteira/tmp/", ".esteira/hooks/"]) },
+    { path: ".gitignore", ...appendUniqueLines(root, ".gitignore", [".esteira/runs/", ".esteira/tmp/", ".esteira/hooks/", ".esteira/heals/", ".esteira/backups/"]) },
   ];
 
   if (!quiet) {
@@ -50,8 +51,8 @@ export function runInit({ root, dryRun = false, force = false, quiet = false }) 
     }
     process.stdout.write(
       "\nPróximos passos:\n" +
-      "  - gh esteira pin             (fixa as actions dos workflows por SHA)\n" +
-      "  - git commit                 (o pre-commit roda o gate de segurança + playground)\n" +
+      "  - git commit                 (o pre-commit roda o gate; se bloquear, o heal propõe e verifica a correção)\n" +
+      "  - gh esteira agent           (conversa com o Hermes sobre o projeto, só leitura)\n" +
       "  - gh esteira audit           (auditoria de CVEs das dependências)\n" +
       "  - Manual: https://github.com/hugoreiis12-png/gh-esteira/blob/main/docs/MANUAL.md\n"
     );

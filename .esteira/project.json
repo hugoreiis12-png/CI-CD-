@@ -2,23 +2,25 @@
   "schemaVersion": 1,
   "tool": "@esteira/cli",
   "adaptersVersion": 1,
-  "generatedAt": "2026-11-09T01:04:54.340Z",
+  "generatedAt": "2026-11-09T19:43:34.595Z",
   "profile": {
     "schemaVersion": 1,
-    "root": "/Users/hugo/Desktop/CI:CD ",
-    "generatedAt": "2026-11-09T01:04:54.339Z",
+    "root": "C:\\Users\\JFC\\Desktop\\CICD\\gh-esteira",
+    "generatedAt": "2026-11-09T19:43:34.594Z",
     "files": {
-      "total": 58,
+      "total": 75,
       "signatures": {
-        ".mjs": 48,
+        ".mjs": 62,
         ".json": 4,
+        ".md": 2,
+        ".yml": 1,
         ".gitignore": 1,
-        ".md": 1,
         "package-lock.json": 1,
         "package.json": 1,
         ".ts": 1,
         "tsconfig.json": 1,
         "__no_ext__": 1,
+        ".cmd": 1,
         ".sh": 1,
         ".log": 1
       }
@@ -36,30 +38,44 @@
       "terraform": false,
       "ansible": false,
       "argocd": false,
-      "ciProviders": [],
-      "hasPipelines": false
+      "ciProviders": [
+        "github-actions"
+      ],
+      "hasPipelines": true
     },
     "commands": {
-      "test": "npm --prefix cli test",
-      "typecheck": null,
       "lint": null,
+      "typecheck": null,
+      "test": null,
       "build": null
     },
     "gaps": [
       {
         "id": "unknown-stack",
-        "message": "No language manifest found; adapters will rely on file fingerprint only."
+        "message": "Nenhum manifesto na raiz; os projetos estão nas subpastas (veja Subprojetos). Para cli (mesmo repositório), configure profile.commands no .esteira/project.json, ex.: \"npm --prefix cli test\"."
       },
       {
         "id": "no-test-command",
-        "message": "No test command detected — playground gates (M3) will require one."
+        "message": "Nenhum comando de teste detectado — o playground do gate precisa de um (profile.commands.test)."
       },
       {
         "id": "no-lint-command",
-        "message": "No lint command detected — the security gate will use built-in checks."
+        "message": "Nenhum comando de lint detectado — o gate usa só as checagens embutidas."
       }
     ],
-    "warnings": []
+    "warnings": [],
+    "subprojects": [
+      {
+        "path": "cli",
+        "languages": [
+          {
+            "id": "node",
+            "packageManager": "npm"
+          }
+        ],
+        "gitRepo": false
+      }
+    ]
   },
   "gate": {
     "mode": "block",
@@ -82,5 +98,11 @@
     ],
     "schedule": "daily",
     "failOn": "high"
+  },
+  "llm": {
+    "enabled": true,
+    "endpoint": "http://192.168.0.140:11434",
+    "model": "hermes3:8b",
+    "timeoutMs": 60000
   }
 }

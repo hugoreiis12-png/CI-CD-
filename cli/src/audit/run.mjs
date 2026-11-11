@@ -1,8 +1,8 @@
 /** @typedef {import("../types.js").AuditFinding} AuditFinding */
 /** @typedef {import("../types.js").AuditRecord} AuditRecord */
 /** @typedef {import("../types.js").AuditSeverity} AuditSeverity */
-/** @typedef {import("../types.js").FetchImpl} FetchImpl */
 import { readJson, writeFile, errorLine } from "../lib/fs-tools.mjs";
+import { auditAdvisory } from "../hermes/advisory.mjs";
 import { collectDependencies, sbomSummary } from "./manifests.mjs";
 import { collectCves } from "./osv.mjs";
 import { render } from "./report.mjs";
@@ -28,9 +28,11 @@ export function readAuditConfig(root) {
  * set — local manifests == the repository content (the GitHub-repo scan rides
  * on CI running this command against the checkout). Concise findings, each
  * with a concrete fix ("upgrade X to >= Y"), plus persisted record.
+ * `llm: false` skips the Hermes triage; any LLM failure degrades silently.
  */
-/** @param {{ root: string, json?: boolean, fetchImpl?: FetchImpl, timeoutMs?: number }} input */
-export async function runAudit({ root, json = false, fetchImpl, timeoutMs }) {
+/** @param {{ root: string, json?: boolean, fetchImpl?: import("../types.js").FetchImpl, timeoutMs?: number, llm?: boolean, quiet?: boolean }} input */
+export async function runAudit({ root, json = false, fetchImpl, timeoutMs, llm = true, quiet = false }) {
+  const manifest = readJson(root, ".esteira/project.json");
   const config = readAuditConfig(root);
   const sbom = collectDependencies(root);
   const summary = sbomSummary(sbom);
@@ -55,6 +57,28 @@ export async function runAudit({ root, json = false, fetchImpl, timeoutMs }) {
     .filter((f) => (SEVERITY_ORDER[f.severity] ?? 0) >= (SEVERITY_ORDER[config.failOn] ?? 3));
   const verdict = blockers.length > 0 ? "reproved" : "clean";
 
+  // Hermes triage (advisory only): rank fixes, flag false positives, suggest
+  // upgrade commands. Never blocks the pipeline; any failure degrades here.
+  /** @type {import("../types.js").AuditRecord["advisory"]} */
+  let advisory = null;
+  if (llm) {
+    try {
+      const preliminary = /** @type {import("../types.js").AuditRecord} */ ({
+        schemaVersion: 1, tool: "@esteira/cli", kind: "cve-audit", generatedAt: new Date().toISOString(),
+        root, sources: config.sources,
+        verdict, counts, sbom: summary, advisoryCount: findings.length,
+        blockers: blockers.length, failOn: config.failOn, findings,
+        advisory: null, note: null,
+      });
+      advisory = await auditAdvisory({ manifest, record: preliminary, fetchImpl });
+    } catch {
+      advisory = null;
+    }
+  }
+  if (advisory?.error && !quiet) {
+    process.stdout.write(`[hermes] triage indisponível (${advisory.error}) — audit seguiu sem o LLM.\n`);
+  }
+
   /** @type {AuditRecord} */
   const record = {
     schemaVersion: 1,
@@ -70,6 +94,7 @@ export async function runAudit({ root, json = false, fetchImpl, timeoutMs }) {
     advisoryCount: findings.length,
     blockers: blockers.length,
     findings,
+    advisory,
     note: offlineNote ?? null,
   };
 

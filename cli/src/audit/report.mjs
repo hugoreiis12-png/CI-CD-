@@ -21,6 +21,11 @@ export function render(record) {
     else lines.push(`             correção: veja em ${f.id} a resolução suportada (${f.source})`);
   }
 
+  if (record.advisory?.text) {
+    lines.push("");
+    lines.push(`Parecer do Hermes (${record.advisory.model}, ${record.advisory.ms}ms):`);
+    for (const line of record.advisory.text.split("\n")) lines.push(`  ${line}`);
+  }
   if (record.sbom.total === 0) lines.push("  (nenhum manifesto de dependências encontrado)");
   if (record.note) lines.push(`Nota        : ${record.note}`);
 

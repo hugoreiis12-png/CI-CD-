@@ -3,6 +3,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { runGate, runGateCommits } from "../gate/run.mjs";
 import { runAudit } from "../audit/run.mjs";
+import { runHeal, renderHeal } from "../heal/run.mjs";
 import { severityLabel } from "../lib/labels.mjs";
 import { exists, errorLine } from "../lib/fs-tools.mjs";
 
@@ -28,10 +29,25 @@ const DEPENDENCY_FILES = new Set([
   "requirements.txt", "pyproject.toml", "poetry.lock", "uv.lock", "Pipfile.lock", "go.mod", "go.sum", "Cargo.toml", "Cargo.lock",
 ]);
 // Registros da esteira nunca devem ir para o git, nem em repositórios sem init.
-const LOCAL_EXCLUDES = [".esteira/runs/", ".esteira/tmp/", ".esteira/audits/", ".esteira/reports/"];
+const LOCAL_EXCLUDES = [".esteira/runs/", ".esteira/tmp/", ".esteira/audits/", ".esteira/reports/", ".esteira/heals/", ".esteira/backups/"];
 
 /** @param {string} root @param {string[]} args */
 const git = (root, args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+/**
+ * A blocked commit gets Hermes' fix, verified by the project's own checks, in
+ * the working tree. The commit stays blocked: the user reviews, stages, commits.
+ * Off with ESTEIRA_HEAL=0. Never blocks on its own failure.
+ * @param {string} root
+ */
+async function healAfterBlock(root) {
+  if (process.env.ESTEIRA_HEAL === "0") return;
+  try {
+    process.stdout.write(renderHeal(await runHeal({ root })));
+  } catch (error) {
+    process.stderr.write(`[esteira] heal falhou (não bloqueia): ${errorLine(error)}\n`);
+  }
+}
 
 /** @param {string} root */
 function enabled(root) {
@@ -101,7 +117,9 @@ export async function runHook(name, { root, args, stdin }) {
   excludeRecords(root);
 
   if (name === "pre-commit" || name === "pre-merge-commit") {
-    return runGate({ root }).exitCode;
+    const gate = await runGate({ root });
+    if (gate.exitCode !== 0) await healAfterBlock(root);
+    return gate.exitCode;
   }
 
   if (name === "pre-push") {
@@ -116,7 +134,7 @@ export async function runHook(name, { root, args, stdin }) {
     }
     if (commits.length === 0) return 0;
     process.stdout.write(`Esteira pre-push — validando ${commits.length} commit(s) que ainda não estão no remoto\n`);
-    return runGateCommits({ root, commits }).exitCode;
+    return (await runGateCommits({ root, commits })).exitCode;
   }
 
   // post-merge (git pull / git merge) e post-rewrite (git pull --rebase, rebase): não bloqueiam.
@@ -129,7 +147,7 @@ export async function runHook(name, { root, args, stdin }) {
   }
   if (incoming.length === 0) return 0;
   try {
-    const run = runGateCommits({ root, commits: incoming.slice(-MAX_COMMITS), json: true, staticOnly: true });
+    const run = await runGateCommits({ root, commits: incoming.slice(-MAX_COMMITS), json: true, staticOnly: true });
     const problems = run.findings.filter((f) => !/^(?:playground-|submodule-)/.test(f.rule));
     process.stdout.write(problems.length
       ? `${renderWarnings(run, `Esteira (${name === "post-merge" ? "pull/merge" : "rebase"}) — ATENÇÃO: o que chegou tem ${problems.length} problema(s) de segurança:`)}\n`

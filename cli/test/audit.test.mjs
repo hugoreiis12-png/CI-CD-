@@ -9,6 +9,10 @@ import {
 import { floorOf, severityOf, fixedVersionsOf, collectCves } from "../src/audit/osv.mjs";
 import { runAudit } from "../src/audit/run.mjs";
 
+// Hermetic: the triage LLM lives on a LAN address that CI runners cannot reach.
+// Without this, every runAudit call waits for the LLM timeout (60 s) first.
+process.env.ESTEIRA_LLM_ENABLED = "false";
+
 function fixtureProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-audit-"));
   const write = (rel, content) => {
@@ -150,7 +154,10 @@ function fakeOsv() {
   };
 }
 
-const sleepingFetch = () => new Promise(() => {}); // hangs until the timeout
+// Hangs until aborted, and honours the signal like a real fetch does.
+const sleepingFetch = (_url, init) => new Promise((_, reject) => {
+  init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+});
 
 test("collectCves normalizes findings: sort by severity, extract fixes", async () => {
   const dir = fixtureProject();

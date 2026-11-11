@@ -13,6 +13,8 @@ import { verifyAttestation } from "../src/gate/attest.mjs";
 import { runHook } from "../src/hooks/run.mjs";
 import { installHook } from "../src/adapters/precommit.mjs";
 
+process.env.ESTEIRA_LLM_ENABLED = "false";
+
 const CLI = fileURLToPath(new URL("../src/index.mjs", import.meta.url));
 const SECRET = "s3cr3tValueXYZ987abc";
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -34,12 +36,12 @@ function repo(files = {}) {
 const write = (dir, rel, body) => fs.writeFileSync(path.join(dir, rel), body);
 const rules = (run) => run.findings.map((f) => f.rule);
 
-test("incident replay: .gitignore stops ignoring .env and .env is committed → blocked", () => {
+test("incident replay: .gitignore stops ignoring .env and .env is committed → blocked", async () => {
   const dir = repo();
   write(dir, ".gitignore", ".esteira/\n");
   write(dir, ".env", `IFOOD_CLIENT_ID=abc123\nIFOOD_CLIENT_SECRET=${SECRET}\nVITE_STRIPE_PUBLISHABLE_KEY=pk_test_1\n`);
   git(dir, "add", "-A");
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "reproved");
   assert.ok(rules(run).includes("sensitive-file"));
   assert.ok(rules(run).includes("gitignore-unprotects-secrets"));
@@ -48,21 +50,21 @@ test("incident replay: .gitignore stops ignoring .env and .env is committed → 
   assert.ok(!JSON.stringify(run.findings).includes(SECRET), "values are never echoed");
 });
 
-test("sensitive rules stay quiet on examples, placeholders, certificates and equivalent ignore rules", () => {
+test("sensitive rules stay quiet on examples, placeholders, certificates and equivalent ignore rules", async () => {
   const dir = repo();
   write(dir, ".env.example", "API_TOKEN=\nDB_PASSWORD=changeme\nSECRET_KEY=<your-key>\n");
   write(dir, "cert.pem", "-----BEGIN CERTIFICATE-----\n");
   write(dir, ".gitignore", ".env*\n!.env.example\n.esteira/\n"); // .env and .env.* collapsed into .env*
   git(dir, "add", "-A");
-  const found = rules(runGate({ root: dir, json: true })).filter((r) => r.startsWith("sensitive") || r.startsWith("secret") || r.startsWith("gitignore"));
+  const found = rules(await runGate({ root: dir, json: true })).filter((r) => r.startsWith("sensitive") || r.startsWith("secret") || r.startsWith("gitignore"));
   assert.deepEqual(found, []);
 });
 
-test("keys, keystores and credentials files are blocked by name", () => {
+test("keys, keystores and credentials files are blocked by name", async () => {
   const dir = repo();
   for (const f of ["server.key", "release.jks", "id_ed25519", "credentials.json", "prod.env"]) write(dir, f, "x\n");
   git(dir, "add", "-A");
-  const files = runGate({ root: dir, json: true }).findings.filter((f) => f.rule === "sensitive-file").map((f) => f.file).sort();
+  const files = (await runGate({ root: dir, json: true })).findings.filter((f) => f.rule === "sensitive-file").map((f) => f.file).sort();
   assert.deepEqual(files, ["credentials.json", "id_ed25519", "prod.env", "release.jks", "server.key"]);
 });
 
@@ -147,7 +149,7 @@ test("init --global: a repository without init is protected; --uninstall restore
   assert.equal(run("init", "--global").status, 0);
   const configured = spawnSync("git", ["config", "--global", "core.hooksPath"], { encoding: "utf8", env }).stdout.trim();
   assert.equal(configured, path.join(home, ".config", "esteira", "hooks"));
-  assert.match(fs.readFileSync(path.join(configured, "pre-commit"), "utf8"), /ESTEIRA_PREV_HOOKS='\/old\/hooks'/);
+  assert.match(fs.readFileSync(path.join(configured, "pre-commit"), "utf8"), /ESTEIRA_PREV_HOOKS='.*old.*hooks'/);
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "esteira-noinit-"));
   const g = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8", env });
@@ -164,7 +166,7 @@ test("init --global: a repository without init is protected; --uninstall restore
   assert.equal(spawnSync("git", ["config", "--global", "core.hooksPath"], { encoding: "utf8", env }).stdout.trim(), "/old/hooks");
 });
 
-test("playground reuses installed dependencies and never deletes them", () => {
+test("playground reuses installed dependencies and never deletes them", async () => {
   const dir = repo({
     ".gitignore": "node_modules/\n.esteira/\n",
     ".esteira-keep": "",
@@ -176,7 +178,7 @@ test("playground reuses installed dependencies and never deletes them", () => {
   write(dir, ".esteira/project.json", JSON.stringify({ profile: { commands: { test: "node --test dep.test.mjs" } } }));
   write(dir, "README", "changed\n");
   git(dir, "add", "-A");
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   assert.equal(run.verdict, "approved", JSON.stringify(run.findings));
   assert.ok(run.playground?.lines?.some((l) => /node_modules/.test(l)));
   assert.ok(fs.existsSync(path.join(dir, "node_modules", "dep", "index.mjs")), "the real node_modules survives the snapshot cleanup");

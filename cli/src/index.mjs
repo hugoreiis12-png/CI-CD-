@@ -4,14 +4,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAnalyze } from "./commands/analyze.mjs";
 import { runInit } from "./commands/init.mjs";
+import { runUpdate } from "./commands/update.mjs";
 import { runGate } from "./gate/run.mjs";
 import { verifyAttestation } from "./gate/attest.mjs";
 import { runAudit } from "./audit/run.mjs";
 import { runGitops } from "./gitops/run.mjs";
 import { runPromote } from "./promote/run.mjs";
 import { runReport } from "./report/cloudflare.mjs";
+import { runOrchestrate } from "./hermes/run.mjs";
 import { runHelp, overview } from "./commands/help.mjs";
 import { runHook } from "./hooks/run.mjs";
+import { runAgent } from "./agent/repl.mjs";
+import { runHeal, renderHeal } from "./heal/run.mjs";
+import { newerVersionAvailable, upgradeExtension, runGh } from "./commands/self-update.mjs";
 import { installGlobalHooks, uninstallGlobalHooks } from "./adapters/precommit.mjs";
 import { pinWorkflows, makeGhResolver } from "./gitops/pin.mjs";
 import { exists, readFile, writeFile, errorLine } from "./lib/fs-tools.mjs";
@@ -38,11 +43,15 @@ const VERSION = JSON.parse(
  * @property {string} [gitopsRepo]
  * @property {string} [policyRef]
  * @property {boolean} [head]
+ * @property {boolean} [llm]
+ * @property {boolean} [quiet]
  * @property {string} [tag]
  * @property {string} [env]
  * @property {string} [repo]
  * @property {string} [app]
  * @property {string} [out]
+ * @property {boolean} [ci]
+ * @property {boolean} [noExtension]
  */
 
 /** @param {string[]} argv @returns {{ flags: Flags, positional: string[] }} */
@@ -50,7 +59,7 @@ function parse(argv) {
   /** @type {Flags} */
   const flags = {
     json: false, dryRun: false, force: false, staged: false, verify: false,
-    help: false, version: false, dir: process.cwd(),
+    help: false, version: false, llm: true, dir: process.cwd(),
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -67,6 +76,10 @@ function parse(argv) {
     else if (a === "--gitops-repo") flags.gitopsRepo = argv[++i];
     else if (a === "--policy-ref") flags.policyRef = argv[++i];
     else if (a === "--head") flags.head = true;
+    else if (a === "--no-llm") flags.llm = false;
+    else if (a === "--quiet") flags.quiet = true;
+    else if (a === "--ci") flags.ci = true;
+    else if (a === "--no-extension") flags.noExtension = true;
     else if (a === "--out") flags.out = argv[++i];
     else if (a === "--tag") flags.tag = argv[++i];
     else if (a === "--env") flags.env = argv[++i];
@@ -132,14 +145,31 @@ async function main() {
         break;
       }
       runInit({ root: flags.dir, dryRun: flags.dryRun, force: flags.force });
+      if (!flags.dryRun) process.exitCode = await pinAfterInit(flags.dir);
       break;
+    case "update": {
+      if (!flags.dryRun && !flags.noExtension) {
+        const childStatus = upgradeThenRelaunch(flags);
+        if (childStatus !== null) {
+          process.exitCode = childStatus;
+          break;
+        }
+      }
+      const resolveRef = await makeGhResolver();
+      const out = await runUpdate({
+        root: flags.dir, dryRun: flags.dryRun, force: flags.force, quiet: flags.quiet, json: flags.json,
+        existsFile: exists, readFile, writeFile, resolveRef,
+      });
+      if (out.pinReport.unresolved.length > 0) process.exitCode = 1;
+      break;
+    }
     case "hook": {
       const stdin = process.stdin.isTTY ? "" : fs.readFileSync(0, "utf8");
       process.exitCode = await runHook(positional[1] ?? "", { root: flags.dir, args: positional.slice(2), stdin });
       break;
     }
     case "gate": {
-      const run = runGate({ root: flags.dir, json: flags.json, policyRef: flags.policyRef, head: flags.head });
+      const run = await runGate({ root: flags.dir, json: flags.json, policyRef: flags.policyRef, head: flags.head, llm: flags.llm });
       if (flags.json) process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
       process.exitCode = run.exitCode;
       break;
@@ -151,7 +181,7 @@ async function main() {
       break;
     }
     case "audit": {
-      const result = await runAudit({ root: flags.dir, json: flags.json });
+      const result = await runAudit({ root: flags.dir, json: flags.json, llm: flags.llm });
       process.exitCode = result.exitCode;
       break;
     }
@@ -171,6 +201,20 @@ async function main() {
       process.exitCode = runReport({ root: flags.dir, out: flags.out, json: flags.json }).exitCode;
       break;
     }
+    case "orchestrate": {
+      const plan = await runOrchestrate({ root: flags.dir, json: flags.json, llm: flags.llm, quiet: flags.quiet });
+      process.exitCode = plan.exitCode;
+      break;
+    }
+    case "agent":
+      process.exitCode = await runAgent({ root: flags.dir });
+      break;
+    case "heal": {
+      const outcome = await runHeal({ root: flags.dir, ci: flags.ci, dryRun: flags.dryRun });
+      process.stdout.write(renderHeal(outcome));
+      process.exitCode = outcome.status === "rejected" ? 1 : 0;
+      break;
+    }
     case "pin": {
       const resolveRef = await makeGhResolver();
       const report = await pinWorkflows({
@@ -186,6 +230,40 @@ async function main() {
       process.stderr.write(`[esteira] comando desconhecido: ${command}\n\n${overview()}`);
       process.exitCode = 1;
   }
+}
+
+/**
+ * `gh esteira update` first brings the extension to the latest published tag,
+ * then hands the project update to the new copy (--no-extension stops the loop).
+ * Returns the child's exit code, or null when nothing changed or the upgrade
+ * failed (the project is then updated by the running version).
+ * @param {Flags} flags @returns {number | null}
+ */
+function upgradeThenRelaunch(flags) {
+  const target = newerVersionAvailable(VERSION);
+  if (!target) return null;
+  process.stdout.write(`Esteira ${VERSION} instalada; ${target} está disponível. Atualizando a extensão…\n`);
+  const upgraded = upgradeExtension(target);
+  if (!upgraded.ok) {
+    process.stdout.write(`[esteira] não consegui atualizar a extensão (${upgraded.method}); seguindo com a ${VERSION}.\n`);
+    return null;
+  }
+  process.stdout.write(`Extensão em ${upgraded.version}. Reaplicando o projeto com ela.\n`);
+  const args = ["esteira", "update", "--no-extension", "--dir", flags.dir];
+  if (flags.force) args.push("--force");
+  return runGh(args, { inherit: true }).status ?? 1;
+}
+
+/**
+ * `init` ends configured: the actions of the generated workflows are pinned
+ * by SHA right away (needs gh). An unresolved pin is reported, not hidden.
+ * @param {string} root @returns {Promise<number>} exit code
+ */
+async function pinAfterInit(root) {
+  const resolveRef = await makeGhResolver();
+  const report = await pinWorkflows({ root, resolveRef, existsFile: exists, readFile, writeFile });
+  process.stdout.write(renderPin(report, false));
+  return report.unresolved.length > 0 ? 1 : 0;
 }
 
 main().catch((error) => {

@@ -45,6 +45,14 @@ export interface PlaygroundSettings {
   timeoutMs: number;
 }
 
+/** LLM advisory layer (hermes/). `endpoint` null = feature off or disabled. */
+export interface LlmSettings {
+  /** Effective endpoint, or null when the feature is off or disabled. */
+  endpoint: string | null;
+  model: string;
+  timeoutMs: number;
+}
+
 export interface GateConfig {
   mode: GateMode;
   blockAt: Severity;
@@ -96,6 +104,14 @@ export interface RunRecord {
   stats: { files: number; insertions: number; deletions: number; findings: number };
   findings: Finding[];
   playground: PlaygroundOutcome | null;
+  /** Hermes advisory (hermes/advisory.mjs) — advisory only, never the verdict. */
+  advisory: {
+    model: string;
+    /** The model's full text (gate: verdict explanation; audit: CVE triage). */
+    text: string;
+    ms: number;
+    error: string | null;
+  } | null;
   note: string | null;
   path?: string | null;
 }
@@ -156,6 +172,16 @@ export interface Language {
   frameworks: string[];
   evidence: string[];
   commands: Commands;
+  /** Command that installs dependencies in CI (lifecycle scripts off); null when unknown. */
+  installCommand?: string | null;
+}
+
+/** Result of one Hermes LLM call (hermes/adapter.mjs). Never throws. */
+export interface LlmResult {
+  status: "ok" | "skipped" | "error";
+  text: string;
+  ms: number;
+  error: string | null;
 }
 
 export interface Gap {
@@ -166,7 +192,7 @@ export interface Gap {
 /** A project found one folder below a root that has no manifest of its own. */
 export interface Subproject {
   path: string;
-  languages: { id: string; packageManager: string | null }[];
+  languages: { id: string; packageManager: string | null; runtime: Record<string, string>; commands: Commands; installCommand: string | null }[];
   /** The folder is its own git repository (not tracked by the parent). */
   gitRepo: boolean;
 }
@@ -194,9 +220,11 @@ export interface Manifest {
     blockAt?: unknown;
     maxFileBytes?: number;
     playground?: Partial<PlaygroundSettings>;
+    llm?: { enabled?: boolean; endpoint?: string; model?: string; timeoutMs?: number };
   };
   audit?: { failOn?: string; maxDetails?: number; sources?: string[] };
   gitops?: { repo?: string };
+  llm?: { enabled?: boolean; endpoint?: string; model?: string; timeoutMs?: number };
 }
 
 // ---- audit (audit/*) ----
@@ -242,6 +270,14 @@ export interface AuditRecord {
   advisoryCount: number;
   blockers: number;
   findings: AuditFinding[];
+  /** Hermes advisory (hermes/advisory.mjs) — advisory only, never the verdict. */
+  advisory: {
+    model: string;
+    /** The model's full text (audit: CVE triage). */
+    text: string;
+    ms: number;
+    error: string | null;
+  } | null;
   note: string | null;
   path?: string | null;
 }
@@ -267,6 +303,30 @@ export interface OsvVuln {
     ranges?: { events?: { introduced?: string; fixed?: string }[] }[];
   }[];
   unavailable?: boolean;
+}
+
+// ---- orchestrator (hermes/orchestrator.mjs) ----
+
+/** A single action the orchestrator can prescribe. */
+export interface OrchestrationAction {
+  type: "approve" | "block" | "retry" | "escalate" | "fix" | "promote" | "quarantine" | "investigate";
+  target: string;
+  reason: string;
+  command?: string;
+}
+
+/** The full plan produced by the Hermes orchestrator. */
+export interface OrchestrationPlan {
+  verdict: "approve" | "block" | "hold";
+  confidence: number;
+  actions: OrchestrationAction[];
+  summary: string;
+  risks: string[];
+  next_step: string;
+  source: "hermes" | "deterministic-fallback";
+  model?: string;
+  ms?: number;
+  error?: string | null;
 }
 
 // ---- process helpers ----

@@ -102,7 +102,11 @@ test("init: dry-run writes nothing, real run is idempotent", () => {
   assert.ok(fs.existsSync(path.join(dir, ".esteira/project.json")));
   assert.ok(fs.existsSync(path.join(dir, ".github/workflows/esteira-ci.yml")));
   const hook = path.join(dir, ".esteira/hooks/pre-commit");
-  assert.ok(fs.statSync(hook).mode & 0o111, "hook must be executable");
+  if (process.platform !== "win32") {
+    assert.ok(fs.statSync(hook).mode & 0o111, "hook must be executable");
+  } else {
+    assert.ok(fs.existsSync(hook), "hook must exist");
+  }
   assert.equal(first.profile.languages[0].id, "node");
 
   const second = runInit({ root: dir, quiet: true });
