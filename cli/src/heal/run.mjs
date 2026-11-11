@@ -2,8 +2,9 @@
 /** @typedef {import("./verify.mjs").VerifyResult} VerifyResult */
 import { generate } from "../hermes/adapter.mjs";
 import { resolveLlmSettings } from "../hermes/config.mjs";
-import { readJson, writeFile } from "../lib/fs-tools.mjs";
+import { errorLine, readJson, writeFile } from "../lib/fs-tools.mjs";
 import { buildProfile } from "../lib/profile.mjs";
+import { realProjectPath } from "../agent/tools.mjs";
 import { collectEvidence, classify } from "./evidence.mjs";
 import { buildHealPrompt, parseProposal } from "./proposal.mjs";
 import { verifyProposal } from "./verify.mjs";
@@ -71,6 +72,12 @@ export async function runHeal({ root, ci = false, dryRun = false, fetchImpl }) {
 
   const proposal = parseProposal(llm.text, root);
   if (!proposal) return result({ ...base, status: "invalid-proposal" });
+  // A symlink in the repo must not turn a proposed file into a write outside it.
+  try {
+    for (const fix of proposal.files) realProjectPath(root, fix.path);
+  } catch (error) {
+    return result({ ...base, status: "rejected", files: proposal.files.map((f) => f.path), error: errorLine(error) });
+  }
 
   const check = verifyProposal({ root, files: proposal.files, commands });
   const files = proposal.files.map((f) => f.path);

@@ -1,4 +1,6 @@
 /** @typedef {import("../types.js").SbomItem} SbomItem */
+import fs from "node:fs";
+import path from "node:path";
 import { readJson, readFile, exists } from "../lib/fs-tools.mjs";
 
 /**
@@ -112,20 +114,50 @@ export function collectRust(root) {
   return items;
 }
 
-/** All supported manifests found under `root` (dedup by ecosystem+name). */
-/** @param {string} root @returns {SbomItem[]} */
+// Folders that never hold the project's own manifests (installed or generated code).
+const SKIP_FOLDERS = new Set(["node_modules", ".git", ".venv", "venv", "vendor", "target", "dist", "build", "coverage", "__pycache__", ".esteira"]);
+const MAX_DEPTH = 4;
+
+/**
+ * The project root and every subfolder below it (bounded), so a subproject such
+ * as `cli/` with its own package.json is audited too.
+ * @param {string} root @returns {string[]} posix paths relative to root ("" is the root)
+ */
+export function manifestFolders(root) {
+  /** @type {string[]} */
+  const found = [""];
+  /** @param {string} rel @param {number} depth */
+  const walk = (rel, depth) => {
+    if (depth >= MAX_DEPTH) return;
+    for (const entry of fs.readdirSync(path.join(root, rel), { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || SKIP_FOLDERS.has(entry.name) || entry.name.startsWith(".")) continue;
+      const child = rel ? `${rel}/${entry.name}` : entry.name;
+      found.push(child);
+      walk(child, depth + 1);
+    }
+  };
+  walk("", 0);
+  return found;
+}
+
+/**
+ * All supported manifests under `root`, including subprojects. Each item's
+ * `source` names the manifest it came from (e.g. `cli/package.json`).
+ * @param {string} root @returns {SbomItem[]}
+ */
 export function collectDependencies(root) {
-  const [npm, python, go, rust] = [
-    collectNpm(root), collectPython(root), collectGo(root), collectRust(root),
-  ];
+  const items = manifestFolders(root).flatMap((folder) => {
+    const prefix = folder ? `${folder}/` : "";
+    return [...collectNpm(path.join(root, folder)), ...collectPython(path.join(root, folder)), ...collectGo(path.join(root, folder)), ...collectRust(path.join(root, folder))]
+      .map((item) => ({ ...item, source: `${prefix}${item.source}` }));
+  });
   const seen = new Set();
-  const items = [...npm, ...python, ...go, ...rust].filter((item) => {
-    const key = `${item.ecosystem}:${item.name}`;
+  return items.filter((item) => {
+    const key = `${item.ecosystem}:${item.name}:${item.source}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-  return items;
 }
 
 /** @param {SbomItem[]} items */

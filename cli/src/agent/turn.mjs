@@ -4,25 +4,49 @@
 /** @typedef {{ name: string, args: Record<string, unknown> }} ToolCall */
 import { errorLine } from "../lib/fs-tools.mjs";
 
-export const MAX_STEPS = 5;
+export const MAX_STEPS = 8;
 const TOOL_PREFIX = "TOOL:";
 
-/**
- * The model asks for a tool with one line: `TOOL: {"name": "...", "args": {...}}`.
- * Only the first such line counts; anything else is the final answer.
- * An unreadable call comes back with an empty name, so it is refused like any unknown tool.
- * @param {string} reply @returns {ToolCall | null}
- */
-export function parseToolCall(reply) {
-  const line = reply.split("\n").find((l) => l.trim().startsWith(TOOL_PREFIX));
-  if (!line) return null;
+// Small models often drop the prefix and write `nome_da_ferramenta {"arg": 1}`.
+const BARE_CALL = /^([a-z_]+)\s+(\{.*\})$/;
+
+/** @param {unknown} value */
+const argsOf = (value) => (value && typeof value === "object" && !Array.isArray(value) ? /** @type {Record<string, unknown>} */ (value) : {});
+
+/** @param {string} json @returns {ToolCall} */
+function readTagged(json) {
   try {
-    const value = JSON.parse(line.trim().slice(TOOL_PREFIX.length).trim());
-    const args = value?.args && typeof value.args === "object" && !Array.isArray(value.args) ? value.args : {};
-    return { name: typeof value?.name === "string" ? value.name : "", args };
+    const value = JSON.parse(json);
+    return { name: typeof value?.name === "string" ? value.name : "", args: argsOf(value?.args) };
   } catch {
     return { name: "", args: {} };
   }
+}
+
+/** @param {string} name @param {string} json @returns {ToolCall} */
+function readBare(name, json) {
+  try {
+    return { name, args: argsOf(JSON.parse(json)) };
+  } catch {
+    return { name, args: {} };
+  }
+}
+
+/**
+ * The model asks for a tool with one line: `TOOL: {"name": "...", "args": {...}}`
+ * (or the bare `name {args}`). Only the first such line counts; anything else is
+ * the final answer. An unreadable call comes back with an empty name, so it is
+ * refused like any unknown tool.
+ * @param {string} reply @returns {ToolCall | null}
+ */
+export function parseToolCall(reply) {
+  for (const raw of reply.split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith(TOOL_PREFIX)) return readTagged(line.slice(TOOL_PREFIX.length).trim());
+    const bare = BARE_CALL.exec(line);
+    if (bare) return readBare(bare[1], bare[2]);
+  }
+  return null;
 }
 
 /**

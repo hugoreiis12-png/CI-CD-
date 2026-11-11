@@ -45,8 +45,8 @@
     },
     "commands": {
       "lint": null,
-      "typecheck": null,
-      "test": null,
+      "typecheck": "npm --prefix cli run typecheck",
+      "test": "npm --prefix cli run test",
       "build": null
     },
     "gaps": [
@@ -84,7 +84,7 @@
     "playground": {
       "enabled": true,
       "baseline": true,
-      "timeoutMs": 120000
+      "timeoutMs": 600000
     },
     "push": {
       "requireAttestation": true

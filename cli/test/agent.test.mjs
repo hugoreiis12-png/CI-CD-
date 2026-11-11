@@ -35,9 +35,68 @@ function collector() {
 
 test("the agent's tools are exactly the read-only registry (no write tool exists)", () => {
   assert.deepEqual(Object.keys(READ_ONLY_TOOLS).sort(), [
-    "audit_latest", "ci_log", "ci_status", "gate_latest", "git_diff", "git_log",
-    "git_status", "list_files", "read_file", "run_tests",
+    "attest_check", "audit_latest", "ci_log", "ci_status", "gate_latest", "git_branches", "git_diff",
+    "git_log", "git_show", "git_status", "list_files", "read_file", "remote_api_get", "remote_branches",
+    "remote_issue_view", "remote_issues", "remote_pr_diff", "remote_pr_view", "remote_prs", "remote_repo",
+    "run_tests", "search_code",
   ]);
+  assert.equal(Object.keys(READ_ONLY_TOOLS).some((name) => /write|push|merge|comment|create|edit|close|commit|rebase|reset/.test(name)), false);
+});
+
+test("remote_api_get only reads inside this repository: no methods, no other repos, no escapes", async () => {
+  const root = project();
+  const refused = await READ_ONLY_TOOLS.remote_api_get.run({ root }, { path: "repos/outro/dono/issues" });
+  assert.match(refused, /não consegui identificar|caminho recusado/);
+  const sneaky = await READ_ONLY_TOOLS.remote_api_get.run({ root }, { path: "repos/x/y/pulls -X POST" });
+  assert.match(sneaky, /não consegui identificar|caminho recusado/);
+  const escape = await READ_ONLY_TOOLS.remote_api_get.run({ root }, { path: "repos/x/y/../../user" });
+  assert.match(escape, /não consegui identificar|caminho recusado/);
+});
+
+test("git_show refuses refs that git would read as options or ranges", async () => {
+  const root = project();
+  assert.match(await invokeTool(READ_ONLY_TOOLS, { root }, { name: "git_show", args: { ref: "--output=/tmp/x" } }), /ref inválida/);
+  assert.match(await invokeTool(READ_ONLY_TOOLS, { root }, { name: "git_show", args: { ref: "main..HEAD" } }), /ref inválida/);
+  assert.match(await invokeTool(READ_ONLY_TOOLS, { root }, { name: "git_show", args: {} }), /README|base/);
+});
+
+test("search_code finds text in tracked files and never returns lines from credential files", async () => {
+  const root = project();
+  git(root, "add", "-f", ".env");
+  git(root, "commit", "-qm", "oops", "--no-verify");
+  assert.equal(await READ_ONLY_TOOLS.search_code.run({ root }, { pattern: "SEGREDO" }), "nenhuma ocorrência");
+  assert.match(await READ_ONLY_TOOLS.search_code.run({ root }, { pattern: "projeto de teste" }), /README\.md:1:projeto de teste/);
+});
+
+test("attest_check reports a commit that never passed the gate as blocked", async () => {
+  const root = project();
+  assert.match(await READ_ONLY_TOOLS.attest_check.run({ root }, {}), /Push BLOQUEADO/);
+});
+
+test("the agent's context knows the local branch, the recent commits and the remote state", async () => {
+  const root = project();
+  const { projectSnapshot } = await import("../src/agent/context.mjs");
+  const snapshot = projectSnapshot(root);
+  assert.match(snapshot, /Branch e sincronização: ## main/);
+  assert.match(snapshot, /Últimos commits:\n[0-9a-f]+ base/);
+  assert.match(snapshot, /Repositório remoto: /);
+  assert.match(snapshot, /Último gate:\nnenhum registro do gate ainda/);
+});
+
+test("a natural-language question about the remote is answered from a read-only tool", async () => {
+  const root = project();
+  const seen = [];
+  const replies = [
+    { status: "ok", text: 'Vou ver os PRs.\nTOOL: {"name":"remote_prs","args":{"state":"open"}}', error: null },
+    { status: "ok", text: "Não há PRs abertos.", error: null },
+  ];
+  const turn = await runTurn({
+    system: "sys", history: [], question: "tem PR aberto?", tools: READ_ONLY_TOOLS, ctx: { root },
+    chatFn: async (messages) => { seen.push(messages); return replies.shift(); },
+  });
+  assert.equal(turn.reply, "Não há PRs abertos.");
+  assert.equal(turn.steps[0].name, "remote_prs");
+  assert.match(seen[1][seen[1].length - 1].content, /RESULTADO remote_prs:/);
 });
 
 test("safeRelPath keeps reads inside the project, away from .git and credentials", () => {
@@ -56,6 +115,7 @@ test("parseToolCall reads the first TOOL line; a broken one is an unnamed call",
     parseToolCall('vou ver\nTOOL: {"name":"git_status","args":{}}\n'),
     { name: "git_status", args: {} },
   );
+  assert.deepEqual(parseToolCall('remote_pr_diff {"number": 9}'), { name: "remote_pr_diff", args: { number: 9 } });
   assert.equal(parseToolCall("resposta final sem ferramenta"), null);
   assert.deepEqual(parseToolCall("TOOL: {nao-json"), { name: "", args: {} });
 });
@@ -116,6 +176,17 @@ test("gh esteira agent: a chat session reads, refuses writes, and leaves the rep
   assert.match(sink.text(), /Não consigo escrever/);
   assert.equal(fs.existsSync(path.join(root, "x.txt")), false);
   assert.equal(git(root, "status", "--porcelain"), before, "the session changed nothing in the working tree");
+});
+
+test("gh esteira agent shows each consultation before the answer, so the user can audit it", async () => {
+  const root = project();
+  const sink = collector();
+  const replies = [
+    { status: "ok", text: 'TOOL: {"name":"git_branches","args":{}}', error: null },
+    { status: "ok", text: "Estou em main.", error: null },
+  ];
+  await runAgent({ root, input: Readable.from(["em que branch estou?\n", "/sair\n"]), output: sink.out, chatFn: async () => replies.shift() });
+  assert.match(sink.text(), /↳ consultou git_branches \{\}\n\nEstou em main\./);
 });
 
 test("gh esteira agent without a model says so and exits 1", async () => {

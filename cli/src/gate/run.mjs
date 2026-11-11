@@ -26,6 +26,19 @@ const isSeverity = (value) => typeof value === "string" && Object.hasOwn(SEVERIT
 const isMode = (value) => value === "block" || value === "audit";
 
 const MANIFEST = ".esteira/project.json";
+const COMMAND_KEYS = ["lint", "typecheck", "test", "build"];
+
+/**
+ * Command per key: the manifest's value when it is set, else what the project
+ * detection finds. A null in the manifest means "not configured", never a value,
+ * so a manifest that lists every key as null still gets the detected commands.
+ * @param {Partial<Record<string, string | null>> | null | undefined} manifestCommands
+ * @param {Record<string, string | null>} detected
+ * @returns {Record<string, string | null>}
+ */
+export function resolveCommands(manifestCommands, detected) {
+  return Object.fromEntries(COMMAND_KEYS.map((key) => [key, manifestCommands?.[key] || detected[key] || null]));
+}
 
 /** @param {string} root */
 const indexMatchesHead = (root) => {
@@ -254,7 +267,7 @@ async function evaluate({ root, json, policyRef = null, fileSets, playgroundArgs
     playground = { ran: false, reason: skipPlayground };
   } else if (config.playground.enabled) {
     try {
-      const commands = manifest?.profile?.commands ?? buildProfile(root).commands;
+      const commands = resolveCommands(manifest?.profile?.commands, buildProfile(root).commands);
       const result = runPlayground({ root, settings: config.playground, commands, ...playgroundArgs });
       playground = { ran: result.ran, lines: result.lines, results: result.results };
       findings.push(...result.findings);

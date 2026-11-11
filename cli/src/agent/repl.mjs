@@ -10,7 +10,7 @@ import { buildSystemPrompt, projectSnapshot } from "./context.mjs";
 const PROMPT = "hermes> ";
 // Question/answer pairs kept for follow-ups; older turns are dropped to bound the prompt.
 const KEEP_PAIRS = 6;
-const HELP = "Comandos: /limpar (zera a conversa) · /ajuda · /sair. Modo somente leitura: consulta, depura e testa; não escreve.";
+const HELP = "Comandos: /limpar (zera a conversa) · /ajuda · /sair. Pergunte em linguagem natural: o Hermes consulta o repositório local e o remoto (GitHub). Somente leitura: não escreve.";
 
 /**
  * `gh esteira agent`: chat interativo com o Hermes, com o contexto do projeto
@@ -50,6 +50,8 @@ export async function runAgent({ root, input = process.stdin, output = process.s
     else if (line === "/ajuda") output.write(`${HELP}\n`);
     else if (line) {
       const turn = await runTurn({ system, history, question: line, tools: READ_ONLY_TOOLS, ctx: { root }, chatFn: llm });
+      // Every consultation is shown, so the user can check where each fact came from.
+      for (const step of turn.steps) output.write(`  ↳ consultou ${step.name || "(inválida)"} ${JSON.stringify(step.args)}\n`);
       output.write(`\n${turn.reply}\n\n`);
       history = /** @type {import("./turn.mjs").Message[]} */ ([
         ...history, { role: "user", content: line }, { role: "assistant", content: turn.reply },

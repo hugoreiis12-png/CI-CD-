@@ -64,10 +64,14 @@ export function installedVersion(gh = runGh) {
 export function upgradeExtension(target, gh = runGh) {
   gh(["extension", "upgrade", EXTENSION_NAME], { inherit: true });
   if (installedVersion(gh) === target) return { ok: true, method: "upgrade", version: target };
-  gh(["extension", "remove", EXTENSION_NAME], { inherit: true });
-  const installed = gh(["extension", "install", EXTENSION_REPO, "--pin", target], { inherit: true });
+  const previous = installedVersion(gh);
+  // `--force` replaces the copy in place: nothing is removed before the new one is in.
+  const installed = gh(["extension", "install", EXTENSION_REPO, "--pin", target, "--force"], { inherit: true });
   const version = installedVersion(gh);
-  return { ok: installed.status === 0 && version === target, method: "reinstall-pinned", version };
+  if (installed.status === 0 && version === target) return { ok: true, method: "reinstall-pinned", version };
+  // Did not land: put the previous pinned version back, so the user keeps a working `gh esteira`.
+  if (previous) gh(["extension", "install", EXTENSION_REPO, "--pin", previous, "--force"], { inherit: true });
+  return { ok: false, method: "reinstall-pinned", version: installedVersion(gh) };
 }
 
 /**

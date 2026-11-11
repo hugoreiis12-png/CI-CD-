@@ -205,7 +205,7 @@ Todos aceitam `--dir <path>` (o padrão é o diretório atual). No terminal, `gh
 | `gh esteira analyze` | Detecta linguagens, gerenciadores, frameworks, infra e comandos. Só lê. Se a raiz não tem manifesto, lista os projetos das subpastas | `--json` |
 | `gh esteira init` | Configura a esteira no projeto de ponta a ponta: manifesto, workflow de CI (com instalação e testes do subprojeto detectado), hooks e fixação das actions por SHA. Idempotente. | `--dry-run`, `--force` (regenera o workflow) |
 | `gh esteira heal` | Diagnostica gate bloqueado, conflito de merge ou CI com falha; pede a correção ao Hermes e só grava se o typecheck e os testes passarem | `--ci`, `--dry-run` |
-| `gh esteira agent` | Conversa com o Hermes em modo somente leitura. Comandos no chat: `/limpar`, `/ajuda`, `/sair` | `--dir <path>` |
+| `gh esteira agent` | Conversa em linguagem natural com o Hermes sobre o repositório local e o remoto (GitHub via `gh`: PRs, issues, branches, CI, diff, API GET do próprio repositório). Mostra cada consulta feita antes da resposta. Somente leitura: não escreve nada no repositório nem no GitHub. Comandos no chat: `/limpar`, `/ajuda`, `/sair` | `--dir <path>` |
 | `gh esteira gate` | Roda o gate sobre o que está **staged** | `--json`, `--head` (valida e atesta o último commit), `--policy-ref <commit>` (usado no CI: lê a política desse commit) |
 | `gh esteira attest --verify` | Confere se o HEAD é um snapshot aprovado | `--json` |
 | `gh esteira audit` | Gera um SBOM e consulta o OSV.dev; grava `.esteira/audits/latest.json` | `--json` |
