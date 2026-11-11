@@ -75,18 +75,19 @@ export async function invokeTool(tools, ctx, call) {
  *   question: string,
  *   tools: Record<string, AgentTool>,
  *   ctx: ToolContext,
- *   chatFn: (messages: Message[]) => Promise<{ status: string, text: string, error: string | null }>,
+ *   chatFn: (messages: Message[], timeoutMs: number) => Promise<{ status: string, text: string, error: string | null }>,
+ *   timeoutMs?: number,
  *   maxSteps?: number,
  * }} input
  * @returns {Promise<{ reply: string, steps: ToolCall[], failed: boolean }>}
  */
-export async function runTurn({ system, history, question, tools, ctx, chatFn, maxSteps = MAX_STEPS }) {
+export async function runTurn({ system, history, question, tools, ctx, chatFn, timeoutMs = 60_000, maxSteps = MAX_STEPS }) {
   /** @type {Message[]} */
   const messages = [{ role: "system", content: system }, ...history, { role: "user", content: question }];
   /** @type {ToolCall[]} */
   const steps = [];
   for (let i = 0; i < maxSteps; i++) {
-    const llm = await chatFn(messages);
+    const llm = await chatFn(messages, timeoutMs);
     if (llm.status !== "ok") {
       return { reply: `[hermes] indisponível: ${llm.error ?? "sem resposta"}`, steps, failed: true };
     }

@@ -5,6 +5,7 @@ import { resolveLlmSettings } from "../hermes/config.mjs";
 import { readJson } from "../lib/fs-tools.mjs";
 import { READ_ONLY_TOOLS } from "./tools.mjs";
 import { runTurn } from "./turn.mjs";
+import { budgetFor } from "./budget.mjs";
 import { buildSystemPrompt, projectSnapshot } from "./context.mjs";
 
 const PROMPT = "hermes> ";
@@ -31,7 +32,7 @@ export async function runAgent({ root, input = process.stdin, output = process.s
     output.write("Hermes está desligado (llm.enabled=false ou ESTEIRA_LLM_ENABLED=false). Nada a conversar.\n");
     return 1;
   }
-  const llm = chatFn ?? ((/** @type {import("./turn.mjs").Message[]} */ messages) => chat({ settings, messages, fetchImpl }));
+  const llm = chatFn ?? ((/** @type {import("./turn.mjs").Message[]} */ messages, /** @type {number} */ timeoutMs) => chat({ settings, messages, fetchImpl, timeoutMs }));
   const system = buildSystemPrompt({ snapshot: projectSnapshot(root), tools: READ_ONLY_TOOLS });
   output.write(`Hermes — modo consulta (somente leitura) · ${path.basename(root)} · /ajuda para comandos\n`);
 
@@ -49,7 +50,8 @@ export async function runAgent({ root, input = process.stdin, output = process.s
     if (line === "/limpar") history = [];
     else if (line === "/ajuda") output.write(`${HELP}\n`);
     else if (line) {
-      const turn = await runTurn({ system, history, question: line, tools: READ_ONLY_TOOLS, ctx: { root }, chatFn: llm });
+      const timeoutMs = budgetFor(line, settings.timeoutMs);
+      const turn = await runTurn({ system, history, question: line, tools: READ_ONLY_TOOLS, ctx: { root }, chatFn: llm, timeoutMs });
       // Every consultation is shown, so the user can check where each fact came from.
       for (const step of turn.steps) output.write(`  ↳ consultou ${step.name || "(inválida)"} ${JSON.stringify(step.args)}\n`);
       output.write(`\n${turn.reply}\n\n`);
