@@ -103,14 +103,14 @@ test("typecheck gate blocks when the type command fails on the staged snapshot",
   // Same errors as the base: pre-existing, does not block.
   write(dir, "src/calc.js", "/* comment change */\n".concat(fs.readFileSync(path.join(dir, "src/calc.js"), "utf8")));
   git(dir, ["add", "."]);
-  const same = runGate({ root: dir, json: true });
+  const same = await runGate({ root: dir, json: true });
   assert.ok(same.findings.some((f) => f.rule === "pre-existing-type-errors" && f.severity === "low"));
   assert.equal(same.verdict, "approved");
 
   // More errors than the base: blocks.
   write(dir, "types.mjs", 'console.log("error TS1: a"); console.log("error TS2: b"); process.exit(1);\n');
   git(dir, ["add", "."]);
-  const run = runGate({ root: dir, json: true });
+  const run = await runGate({ root: dir, json: true });
   const findings = run.findings.filter((f) => f.rule === "playground-typecheck");
   assert.equal(findings.length, 1);
   assert.equal(findings[0].severity, "medium");
